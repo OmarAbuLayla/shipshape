@@ -46,7 +46,12 @@ export function scoreColor(score: number): string {
   return "var(--crit)";
 }
 
-const PROVIDER_NAMES: Record<string, string> = { deepseek: "DeepSeek", openai: "OpenAI", anthropic: "Anthropic" };
+const PROVIDER_NAMES: Record<string, string> = {
+  deepseek: "DeepSeek",
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  "openai-compatible": "your configured AI service",
+};
 
 export function providerName(provider: string | null | undefined): string {
   return provider ? (PROVIDER_NAMES[provider] ?? capitalize(provider)) : "the AI provider";

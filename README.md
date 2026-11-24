@@ -34,7 +34,7 @@ The first time Shipshape scanned its own repository, it found a bug in itself: i
 
 ## Privacy
 
-Everything runs on your machine. Without an LLM key nothing leaves it. With a key, only the finding and the code around it are sent for explanations; credentials are redacted first, `.env` files are never sent, and every run prints which provider receives the code and what it cost. With DeepSeek that is a server in China, so don't use AI explanations on code you may not share. Answers are cached, so unchanged code is never paid for twice. In the Claude Code plugin, the engine still runs locally, and your code is read by Claude under your own Claude plan, like any other code you open in Claude Code.
+Everything runs on your machine. Without an LLM key nothing leaves it. With a key, only the finding and the code around it are sent for explanations; credentials are redacted first, `.env` files are never sent, and every run prints which provider receives the code and what it cost. Where the code goes depends on the provider you pick: DeepSeek, for example, runs its servers in China, so check your provider's terms before using AI explanations on code you may not share. With a local model (Ollama, vLLM) nothing leaves your machine at all. Answers are cached, so unchanged code is never paid for twice. In the Claude Code plugin, the engine still runs locally, and your code is read by Claude under your own Claude plan, like any other code you open in Claude Code.
 
 ## Getting started
 
@@ -48,7 +48,15 @@ cd web && npm ci && npm run build && cd ..   # build the web app once
 shipshape-api                                # open http://127.0.0.1:8000
 ```
 
-For AI explanations, copy `.env.example` to `.env`, add a DeepSeek API key and check it with `shipshape llm-check --ping`. Run `shipshape-api` from the repository root so it finds `.env`.
+For AI explanations, copy `.env.example` to `.env`, pick a provider, add its key and check it with `shipshape llm-check --ping`. Any service that speaks the OpenAI chat format with JSON mode works:
+
+| Provider | `SHIPSHAPE_LLM_PROVIDER` | Key and endpoint |
+|---|---|---|
+| DeepSeek (default; cheapest we found, about $0.02 for a small project) | `deepseek` | `DEEPSEEK_API_KEY` |
+| OpenAI | `openai` | `OPENAI_API_KEY`, and set `SHIPSHAPE_LLM_MODEL` |
+| OpenRouter, Mistral, Groq, Together, a local Ollama or vLLM, ... | `openai-compatible` | `SHIPSHAPE_LLM_BASE_URL`, `SHIPSHAPE_LLM_API_KEY` and `SHIPSHAPE_LLM_MODEL` |
+
+Cost estimates are shown for DeepSeek's models only; other providers report tokens. The explanations and fixes were tuned and measured with DeepSeek, so quality with other models may differ (weaker models get fewer fixes through verification). Run `shipshape-api` from the repository root so it finds `.env`.
 
 The command line works without the web app:
 

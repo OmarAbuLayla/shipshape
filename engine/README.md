@@ -53,14 +53,14 @@ Test files are also treated more gently by default, because they do things on pu
 ## Explanations and fixes (optional, needs an LLM key)
 
 ```bash
-cp ../.env.example ../.env          # then add your DeepSeek key and pick a model
+cp ../.env.example ../.env          # then pick a provider (deepseek, openai, openai-compatible), add its key and a model
 shipshape llm-check --ping          # confirm the key and model work
 shipshape analyze path/to/project --explain   # explanations + verified fixes
 ```
 
 With `--explain`, the most severe findings (15 by default, `--max-findings` to change) each get a plain-language explanation: what is going on in this code, why an engineer cares, and how to fix it. For checks where a small local edit is the right fix (hard-coded paths, missing seeds, leakage splits, swallowed exceptions, the lint bugs, ...), the model also proposes search-and-replace edits. A fix is only shown as **verified** if, applied in memory, the edits match exactly, the file still parses, the original finding is gone, and no other check reports anything new in the changed files. Otherwise the model gets one retry with the reason, and then the fix is dropped. Verified means "valid and removes the problem", not "behaves the same": Shipshape never runs code.
 
-What leaves your machine: the finding and the code around it (the enclosing function plus the top of the file). Credentials are replaced with `<REDACTED_n>` before sending, `.env` files are never sent, and the run prints which provider receives the code. With DeepSeek that is a server in China; don't use `--explain` on code you may not share. Answers are cached in `~/.shipshape/cache`, so unchanged code is never paid for twice, and every run ends with its API calls, tokens and estimated cost. `shipshape explain-eval corpus/fixtures` runs the real model over the whole corpus and reports fix rates per check (this costs money).
+What leaves your machine: the finding and the code around it (the enclosing function plus the top of the file). Credentials are replaced with `<REDACTED_n>` before sending, `.env` files are never sent, and the run prints which provider receives the code. Where it goes depends on the provider (DeepSeek's servers are in China; a local Ollama keeps everything on your machine), so check before using `--explain` on code you may not share. Answers are cached in `~/.shipshape/cache`, so unchanged code is never paid for twice, and every run ends with its API calls, tokens and (for DeepSeek's models) estimated cost. `shipshape explain-eval corpus/fixtures` runs the real model over the whole corpus and reports fix rates per check (this costs money).
 
 ## Applying fixes
 

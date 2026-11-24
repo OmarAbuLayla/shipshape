@@ -49,7 +49,7 @@ FIXABLE_CHECKS = frozenset(
     }
 )
 DEFAULT_MAX_FINDINGS = 15
-DEFAULT_CONCURRENCY = 6  # parallel API calls; DeepSeek allows far more, this keeps bursts polite
+DEFAULT_CONCURRENCY = 6  # parallel API calls; providers allow more, this keeps bursts polite
 VERIFIED_NOTE = (
     "Verified by static checks: applies cleanly, parses, removes the finding and adds no new "
     "findings. Behaviour was not tested."
