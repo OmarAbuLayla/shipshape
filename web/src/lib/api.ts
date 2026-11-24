@@ -1,6 +1,6 @@
 // Thin, typed wrapper around the local Shipshape API.
 
-import type { FixRun, Health, Lesson, Report, ScanSummary, SourceText } from "./types";
+import type { FixRun, Health, Lesson, Profile, Report, ScanSummary, SourceText } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -43,6 +43,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path, explain, max_findings: maxFindings }),
     }),
+  profile: () => request<Profile>("/api/profile"),
   lessons: () => request<Lesson[]>("/api/lessons"),
   lesson: (name: string) => request<Lesson>(`/api/lessons/${encodeURIComponent(name)}`),
   source: (id: string, path: string) =>

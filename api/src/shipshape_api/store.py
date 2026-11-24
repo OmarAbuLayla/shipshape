@@ -182,6 +182,16 @@ class ScanStore:
             ).fetchone()
         return row[column] if row and row[column] else None
 
+    def finished(self) -> list[tuple[ScanSummary, str | None, str]]:
+        """Every finished scan, oldest first: (summary, scanned folder, report JSON)."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM scans WHERE status = ? AND report IS NOT NULL "
+                "ORDER BY created_at, rowid",
+                (ScanStatus.DONE,),
+            ).fetchall()
+        return [(self._summary(row), row["root"], row["report"]) for row in rows]
+
     def list(self, limit: int = 50) -> list[ScanSummary]:
         """Newest scans first."""
         with self._lock:

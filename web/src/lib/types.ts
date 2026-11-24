@@ -161,6 +161,33 @@ export interface Lesson {
   body: string; // Markdown
 }
 
+/** GET /api/profile */
+export interface ConceptStat {
+  concept: string;
+  lesson: string | null;
+  dimension: string;
+  severity: Severity;
+  projects: string[];
+  places: number;
+  resolved_in: string[];
+}
+
+export interface ProjectStat {
+  name: string;
+  scans: number;
+  first_grade: string;
+  latest_grade: string;
+  latest_scan: string;
+  latest_at: string;
+  findings: number;
+}
+
+export interface Profile {
+  scans: number;
+  projects: ProjectStat[];
+  concepts: ConceptStat[];
+}
+
 export interface Report {
   schema_version: string;
   engine_version: string;

@@ -616,3 +616,43 @@ button.concept:hover { border-color: var(--accent); }
 .lesson-card:hover { border-color: var(--accent); }
 .lesson-card b { font-size: 14.5px; }
 .lesson-card span { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+/* Profile */
+.profile-page { max-width: 980px; }
+.profile-page h1 { font-size: 30px; }
+.profile-page .lead { margin: 8px 0 8px; max-width: 720px; }
+.profile-page .sec { margin-top: 26px; }
+.profile-page h2 { font-size: 17px; margin-bottom: 10px; }
+.profile-page .small { font-size: 13px; margin-bottom: 8px; }
+.concept-rows { display: grid; gap: 2px; }
+.concept-row {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 4px 18px; align-items: center;
+  padding: 10px 4px; border-top: 1px solid var(--line); font-size: 14px;
+}
+.concept-name { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.concept-name a { color: var(--fg); font-weight: 650; }
+.concept-name a:hover { color: var(--accent); }
+.concept-share { display: grid; gap: 4px; font-size: 12.5px; }
+.concept-share .track { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.concept-share .track i { display: block; height: 100%; background: var(--primary); border-radius: 3px; }
+.concept-projects { grid-column: 1 / -1; font-size: 12.5px; padding-left: 18px; }
+.resolved-note { color: var(--ok); }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.dot.critical { background: var(--crit); }
+.dot.major { background: var(--major); }
+.dot.minor { background: var(--minor); }
+.resolved-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 14px; }
+.resolved-list li { display: flex; gap: 8px; align-items: center; }
+.resolved-list svg { color: var(--ok); flex: none; }
+@media (max-width: 720px) {
+  .concept-row { grid-template-columns: 1fr; }
+}
+
+/* Narrow screens: the navigation scrolls sideways instead of widening the page */
+.nav a { white-space: nowrap; }
+@media (max-width: 720px) {
+  .topbar { gap: 10px; }
+  .nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .brand img { height: 32px; }
+  .topbar .right .llm-pill { display: none; }
+}

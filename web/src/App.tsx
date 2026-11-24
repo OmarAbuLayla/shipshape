@@ -7,6 +7,7 @@ import { useHealth, useTheme } from "./lib/hooks";
 import { FixesPage } from "./pages/FixesPage";
 import { History } from "./pages/History";
 import { Lessons } from "./pages/Lessons";
+import { Profile } from "./pages/Profile";
 import { Home } from "./pages/Home";
 import { ScanPage } from "./pages/ScanPage";
 
@@ -29,6 +30,7 @@ export function App() {
           </NavLink>
           <NavLink to="/history">History</NavLink>
           <NavLink to="/lessons">Lessons</NavLink>
+          <NavLink to="/profile">Profile</NavLink>
         </nav>
         <div className="right">
           {health.error ? (
@@ -60,6 +62,7 @@ export function App() {
           <Route path="/scans/:id/fixes" element={<FixesPage />} />
           <Route path="/history" element={<History />} />
           <Route path="/lessons" element={<Lessons />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/lessons/:slug" element={<Lessons />} />
           <Route
             path="*"

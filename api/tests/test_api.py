@@ -340,3 +340,16 @@ def test_lessons(client: TestClient) -> None:
     assert len(listing) == 25 and all(item["body"] == "" for item in listing)
     assert lesson["slug"] == "data-leakage" and "## The idea" in lesson["body"]
     assert client.get("/api/lessons/nope").status_code == 404
+
+
+def test_profile_endpoint(client: TestClient, tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "train.py").write_text(TRAIN, encoding="utf-8")
+    _wait(client, client.post("/api/scans", json={"path": str(project)}).json()["id"])
+
+    profile = client.get("/api/profile").json()
+
+    assert profile["scans"] == 1
+    assert [p["name"] for p in profile["projects"]] == ["proj"]
+    assert any(c["concept"] == "Config over hard-coding" for c in profile["concepts"])

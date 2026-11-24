@@ -26,6 +26,7 @@ from shipshape.models import Report
 from shipshape_api import __version__, fixes, source
 from shipshape_api.fixes import FixRequest, FixRunResponse
 from shipshape_api.jobs import ClientFactory, ScanJob, ScanRunner, default_client_factory
+from shipshape_api.profile import Profile, build_profile
 from shipshape_api.store import ScanStore, ScanSummary
 from shipshape_api.uploads import CHUNK, UploadError, extract_project, save_stream
 
@@ -168,6 +169,11 @@ def create_app(
         if lesson is None:
             raise HTTPException(404, "No such lesson.")
         return lesson
+
+    @app.get("/api/profile")
+    def profile() -> Profile:
+        """Concepts across all your scanned projects, from the local history only."""
+        return build_profile(store.finished())
 
     @app.get("/api/scans")
     def list_scans() -> list[ScanSummary]:
