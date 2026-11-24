@@ -1,7 +1,7 @@
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { Folder, Sparkle, Upload } from "../components/icons";
+import { Folder, Upload } from "../components/icons";
 import { api } from "../lib/api";
 import { formatWhen } from "../lib/format";
 import { useLoad } from "../lib/hooks";
@@ -138,9 +138,7 @@ export function Home({ llmReady, llmLabel }: { llmReady: boolean; llmLabel: stri
               <span />
             </span>
             <span className="text">
-              <b style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Sparkle size={16} /> Explain findings with AI
-              </b>
+              <b>Explain findings with AI</b>
               {llmReady ? (
                 <span className="muted">
                   Sends short code excerpts to {llmLabel} (credentials are removed first). About 0.1 cents per
@@ -189,19 +187,16 @@ export function Home({ llmReady, llmLabel }: { llmReady: boolean; llmLabel: stri
         )}
         {recentPaths.map((scan) => (
           <Link key={scan.id} to={`/scans/${scan.id}`} className="scan-row">
-            {scan.grade ? (
-              <span className={`grade small ${scan.grade}`}>{scan.grade}</span>
-            ) : (
-              <span className="grade small" style={{ background: "var(--surface-3)", color: "var(--muted)" }}>
-                {scan.status === "failed" ? "!" : "…"}
-              </span>
-            )}
             <span style={{ minWidth: 0 }}>
               <div className="name">{scan.name}</div>
               <div className="meta">
-                {scan.status === "done"
-                  ? `${scan.findings} findings${scan.explain ? " · explained" : ""}`
-                  : scan.status}{" "}
+                {scan.status === "done" ? (
+                  <>
+                    grade <b>{scan.grade}</b> · {scan.findings} findings{scan.explain ? " · explained" : ""}
+                  </>
+                ) : (
+                  scan.status
+                )}{" "}
                 · {formatWhen(scan.created_at)}
               </div>
             </span>

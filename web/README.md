@@ -17,6 +17,10 @@ npm run lint && npm run typecheck
 - **Review**: grade and per-dimension scores on top; issues grouped into *Fix first / Worth fixing / Polish* on the left; the architecture map in the middle; the explanation, highlighted fix diff, heads-up and verification note on the right. Selecting an issue highlights and pans to its boxes; clicking a box filters the issues. Large projects open as one box per folder; open a folder in place with *open ▸* or a double-click.
 - **History**: past scans with grade, findings and date.
 
+## Brand
+
+The UI follows the "Structured S" brand: warm neutrals (ink `#191919` on paper `#F5F2E9`), a burnt-orange accent used only for selection, focus and links, Geist for text and IBM Plex Mono for code, paths and metrics (both self-hosted via Fontsource, no external font requests). Logos, favicon and app icons live in `public/brand/`. Severity keeps its own colours, distinct from the accent, and map boxes also differ by border (thick for critical, dotted for minor) so severity doesn't rely on colour alone. All colours are tokens at the top of `src/styles.css`, with a light and a dark set.
+
 ## Code layout
 
 ```

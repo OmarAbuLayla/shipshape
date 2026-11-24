@@ -1,7 +1,7 @@
 import { Link, NavLink, Route, Routes } from "react-router-dom";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { Logo, Moon, Sun } from "./components/icons";
+import { Moon, Sun } from "./components/icons";
 import { providerName } from "./lib/format";
 import { useHealth, useTheme } from "./lib/hooks";
 import { History } from "./pages/History";
@@ -17,8 +17,9 @@ export function App() {
     <div className="shell">
       <header className="topbar">
         <Link to="/" className="brand" aria-label="Shipshape home">
-          <Logo />
-          <b>Shipshape</b>
+          {/* Two versions of the logo; CSS shows the one that matches the theme. */}
+          <img className="logo-light" src="/brand/logo-light.svg" alt="" width={133} height={40} />
+          <img className="logo-dark" src="/brand/logo-dark.svg" alt="" width={133} height={40} />
         </Link>
         <nav className="nav">
           <NavLink to="/" end>

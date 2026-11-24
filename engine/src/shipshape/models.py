@@ -10,7 +10,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "0.4"
+SCHEMA_VERSION = "0.5"
 
 
 class Severity(StrEnum):
@@ -122,6 +122,30 @@ class ProjectStats(BaseModel):
     lines_of_code: int = 0
 
 
+class Suppression(BaseModel):
+    """One finding location the project asked Shipshape to leave out, and how it asked."""
+
+    check_id: str
+    title: str
+    location: Location
+    how: str  # "inline comment" or "check disabled"
+
+
+class Exclusions(BaseModel):
+    """Everything left out of a report on the project's own request, so scores stay traceable."""
+
+    ignore_files: list[str] = Field(default_factory=list)
+    patterns: list[str] = Field(default_factory=list)
+    files_excluded: int = 0
+    disabled_checks: list[str] = Field(default_factory=list)
+    suppressed: list[Suppression] = Field(default_factory=list)
+
+    @property
+    def any(self) -> bool:
+        """True if anything at all was left out."""
+        return bool(self.files_excluded or self.disabled_checks or self.suppressed)
+
+
 class Report(BaseModel):
     """Result of scanning one project."""
 
@@ -138,6 +162,7 @@ class Report(BaseModel):
     )
     graph: ProjectGraph | None = None
     explain_stats: ExplainStats | None = None
+    exclusions: Exclusions = Field(default_factory=Exclusions)
 
 
 class NodeKind(StrEnum):

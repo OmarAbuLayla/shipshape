@@ -226,9 +226,9 @@ export function MapView(props: Props) {
         <MapInner {...props} area={area} />
       </ReactFlowProvider>
       <div className="legend" aria-hidden>
-        <span><i style={{ background: "var(--crit-soft)", border: "1px solid var(--crit)" }} />critical</span>
+        <span><i style={{ background: "var(--crit-soft)", border: "2px solid var(--crit)" }} />critical</span>
         <span><i style={{ background: "var(--major-soft)", border: "1px solid var(--major)" }} />major</span>
-        <span><i style={{ background: "var(--minor-soft)", border: "1px solid var(--minor)" }} />minor</span>
+        <span><i style={{ background: "var(--minor-soft)", border: "1.5px dotted var(--minor)" }} />minor</span>
         <span><i style={{ border: "1px dashed var(--major)" }} />missing</span>
         <span style={{ color: "var(--faint)" }}>→ imports</span>
         <span style={{ color: "var(--ok)" }}>⇢ tests</span>

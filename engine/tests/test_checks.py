@@ -91,7 +91,7 @@ def test_unpinned_dependencies_skip_options_and_comments(make_project: MakeProje
 
 
 def test_secret_value_never_appears_in_the_finding(make_project: MakeProject) -> None:
-    secret = "Zx9vQ2mL7pR4tY8wK3nB6cD1"
+    secret = "Zx9vQ2mL7pR4tY8wK3nB6cD1"  # shipshape: ignore[security.hardcoded-secret] fake
     project = make_project({"cfg.py": f'OPENAI_API_KEY = "{secret}"\n'})
 
     findings = HardcodedSecret().run(project)
@@ -185,3 +185,21 @@ def test_group_shuffle_split_without_seed_is_random(make_project: MakeProject) -
     findings = MissingSeed().run(make_project({"a.py": code}))
 
     assert len(findings) == 1
+
+
+def test_methods_and_closures_are_counted_once() -> None:
+    from shipshape.checks.structure import function_complexities
+
+    code = (
+        "class A:\n"
+        "    def method(self, x):\n"
+        "        def inner(y):\n"
+        "            return y\n"
+        "        return inner(x)\n"
+        "def top():\n"
+        "    return 1\n"
+    )
+
+    names = [name for name, *_ in function_complexities(code)]
+
+    assert names == ["A.method", "inner", "top"]

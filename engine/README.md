@@ -5,6 +5,7 @@ The analysis engine behind Shipshape. It scans a Python project, including noteb
 ```bash
 shipshape analyze path/to/project              # readable report with a scorecard
 shipshape analyze path/to/project -o out.json  # also write the JSON report
+shipshape analyze path/to/project --export findings.md   # or .json / .csv, with or without --explain
 shipshape map path/to/project --html map.html  # architecture map (interactive page)
 shipshape checks                               # list every check
 shipshape eval corpus/fixtures --strict        # precision/recall against labelled projects
@@ -20,7 +21,7 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 | | `structure.complex-function` | Cyclomatic complexity of 15 or more (radon) |
 | | `structure.duplicated-package` | The same package copied into several folders |
 | | `structure.import-cycle` | Modules that import each other at module level (lazy imports inside functions don't count) |
-| Reproducibility | `repro.hardcoded-path` | Absolute, machine-specific paths in string literals |
+| Reproducibility | `repro.hardcoded-path` | Absolute, machine-specific paths in string literals (test files are skipped) |
 | | `repro.missing-environment` | Third-party imports but no requirements/environment/pyproject file |
 | | `repro.unpinned-dependencies` | Requirements without exact versions |
 | | `repro.missing-seed` | Random calls, shuffling splits or weight init with no seed anywhere |
@@ -35,6 +36,14 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 | (any) | `lint.*` | A curated set of 11 ruff rules (undefined names, mutable defaults, unused imports, ...) |
 
 Grouped issues become one finding with many locations, so a project with 100 prints gets one finding, not 100. Thresholds are constants at the top of each check module.
+
+## Leaving things out, visibly
+
+Some files in a project are not its real code: generated files, vendored copies, or deliberately broken examples used by tests. List them in a `.shipshapeignore` file (gitignore-style patterns, relative to the file's folder; nested files work) and they are not scanned. A line `check:<id>` (wildcards allowed, e.g. `check:lint.*`) switches a check off for the project. For one deliberate line, add a comment on that line: `# shipshape: ignore[security.hardcoded-secret] fake key for tests`, or `# shipshape: ignore` for every check.
+
+Nothing is dropped silently. Every report, in the terminal, the web app and all exports, lists how many files were left out and by which patterns, which checks were switched off, and every suppressed location. The scoring formula never changes; only what the project itself declared out of scope is left out of it.
+
+Test files are also treated more gently by default, because they do things on purpose that would be a problem elsewhere: absolute paths in tests are not flagged, and a credential-like value found only in tests is reported as minor (with a hint to mark it as fake) instead of critical.
 
 ## Explanations and fixes (optional, needs an LLM key)
 

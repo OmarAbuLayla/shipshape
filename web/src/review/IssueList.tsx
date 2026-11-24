@@ -78,7 +78,7 @@ export function IssueList({ findings, visible, selected, onSelect, dimension, on
                     {(status === "verified" || finding.explanation) && (
                       <div className="tags">
                         {status === "verified" && <span className="chip verified">fix ready</span>}
-                        {finding.explanation && status !== "verified" && <span className="chip accent">explained</span>}
+                        {finding.explanation && status !== "verified" && <span className="chip neutral">explained</span>}
                       </div>
                     )}
                   </span>

@@ -83,11 +83,16 @@ def function_complexities(text: str) -> list[tuple[str, int, int, int]]:
         blocks = cc_visit(text)
     except (SyntaxError, ValueError):
         return []
-    result: list[tuple[str, int, int, int]] = []
+    # radon lists methods both at the top level and inside their class, so the same function
+    # can appear twice; a function is identified by the line its definition starts on.
+    by_line: dict[int, tuple[str, int, int, int]] = {}
     for block in _flatten(blocks):
         name: str = f"{block.classname}.{block.name}" if block.classname else block.name
-        result.append((name, int(block.complexity), int(block.lineno), int(block.endline)))
-    return result
+        line = int(block.lineno)
+        known = by_line.get(line)
+        if known is None or len(name) > len(known[0]):  # keep the qualified "Class.method" name
+            by_line[line] = (name, int(block.complexity), line, int(block.endline))
+    return sorted(by_line.values(), key=lambda item: item[2])
 
 
 class ComplexFunction(Check):

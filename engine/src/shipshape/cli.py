@@ -17,6 +17,7 @@ from shipshape import __version__
 from shipshape.analyzer import analyze_project
 from shipshape.checks import RULES, default_checks
 from shipshape.evaluation import case_root, evaluate, load_corpus, load_manifest
+from shipshape.export import export, format_for_path
 from shipshape.llm.cache import ExplanationCache
 from shipshape.llm.client import FatalLLMError, LLMError, OpenAICompatibleClient, ping
 from shipshape.llm.explain import DEFAULT_MAX_FINDINGS, explain_report
@@ -118,18 +119,37 @@ def analyze(
     explain: ExplainOption = False,
     max_findings: MaxFindingsOption = DEFAULT_MAX_FINDINGS,
     no_cache: NoCacheOption = False,
+    export_to: Annotated[
+        Path | None,
+        typer.Option(
+            "--export",
+            "-e",
+            help="Export the findings; format from the extension (.json, .md, .csv).",
+        ),
+    ] = None,
 ) -> None:
     """Scan a project. Nothing in the project is executed."""
+    export_format = None
+    if export_to is not None:
+        try:  # check before scanning, so a typo never costs an AI run
+            export_format = format_for_path(export_to.name)
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
     report = _scan(path, explain, max_findings, no_cache)
     payload = report.model_dump_json(indent=2)
     if output is not None:
         output.write_text(payload + "\n", encoding="utf-8")
+    if export_to is not None and export_format is not None:
+        export_to.write_text(export(report, export_format), encoding="utf-8")
     if output_format is OutputFormat.JSON:
         typer.echo(payload)
     else:
         render_report(report, Console())
         if output is not None:
             typer.echo(f"\nJSON report written to {output}")
+        if export_to is not None:
+            typer.echo(f"\nFindings exported to {export_to}")
 
 
 @app.command("map")

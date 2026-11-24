@@ -1,4 +1,4 @@
-// Mirrors engine/src/shipshape/models.py (report schema 0.4) and the API's scan summary.
+// Mirrors engine/src/shipshape/models.py (report schema 0.5) and the API's scan summary.
 
 export type Severity = "critical" | "major" | "minor";
 export type Dimension =
@@ -104,6 +104,21 @@ export interface ExplainStats {
   seconds: number;
 }
 
+export interface Suppression {
+  check_id: string;
+  title: string;
+  location: Location;
+  how: string;
+}
+
+export interface Exclusions {
+  ignore_files: string[];
+  patterns: string[];
+  files_excluded: number;
+  disabled_checks: string[];
+  suppressed: Suppression[];
+}
+
 export interface Report {
   schema_version: string;
   engine_version: string;
@@ -116,6 +131,8 @@ export interface Report {
   check_errors: string[];
   graph: ProjectGraph | null;
   explain_stats: ExplainStats | null;
+  /** Missing in reports saved before schema 0.5. */
+  exclusions?: Exclusions;
 }
 
 export type ScanStatus = "queued" | "running" | "done" | "failed";

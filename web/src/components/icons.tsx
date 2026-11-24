@@ -7,14 +7,6 @@ const base = (size: number) => ({
   strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true,
 });
 
-export const Logo = ({ size = 26 }: IconProps) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
-    <rect width="32" height="32" rx="8" fill="var(--accent)" />
-    <path d="M7 19h18l-3.2 5.2a2 2 0 0 1-1.7.8H11.9a2 2 0 0 1-1.7-.8z" fill="var(--on-accent)" />
-    <path d="M15 7v10h-6z" fill="var(--on-accent)" opacity=".85" />
-    <path d="M17 9v8h5z" fill="var(--on-accent)" />
-  </svg>
-);
 export const Sun = ({ size = 18 }: IconProps) => (
   <svg {...base(size)}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
 );
@@ -26,9 +18,6 @@ export const Folder = ({ size = 18 }: IconProps) => (
 );
 export const Upload = ({ size = 18 }: IconProps) => (
   <svg {...base(size)}><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" /></svg>
-);
-export const Sparkle = ({ size = 18 }: IconProps) => (
-  <svg {...base(size)}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z" /></svg>
 );
 export const Check = ({ size = 16 }: IconProps) => (
   <svg {...base(size)}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>

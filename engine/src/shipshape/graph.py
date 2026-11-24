@@ -141,6 +141,8 @@ def build_graph(project: Project, findings: Sequence[Finding]) -> ProjectGraph:
         )
     for source in project.parsed:
         assert source.tree is not None
+        if source.is_test:  # tests use made-up absolute paths on purpose; they are not data
+            continue
         for value, line in absolute_paths(source.tree):
             external_id = f"external:{value}"
             nodes.setdefault(

@@ -44,14 +44,14 @@ export function History() {
                 <tr key={scan.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/scans/${scan.id}`)}>
                   <td>
                     {scan.grade ? (
-                      <span className={`grade small ${scan.grade}`}>{scan.grade}</span>
+                      <span className="mono" style={{ fontWeight: 600 }}>{scan.grade}</span>
                     ) : (
                       <span className={`chip ${scan.status === "failed" ? "rejected" : "neutral"}`}>{scan.status}</span>
                     )}
                   </td>
                   <td style={{ fontWeight: 700 }}>{scan.name}</td>
                   <td className="mono">{scan.findings ?? "–"}</td>
-                  <td>{scan.explain ? <span className="chip accent">explained</span> : <span className="faint">–</span>}</td>
+                  <td>{scan.explain ? <span className="chip neutral">explained</span> : <span className="faint">–</span>}</td>
                   <td className="muted">{scan.source === "path" ? "folder" : "zip"}</td>
                   <td className="muted">{formatWhen(scan.created_at)}</td>
                   <td style={{ textAlign: "right" }}>

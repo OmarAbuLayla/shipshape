@@ -86,9 +86,15 @@ class HardcodedPath(Check):
     concept: ClassVar[str] = "Config over hard-coding"
 
     def run(self, project: Project) -> list[Finding]:
-        """Find string literals that look like absolute, machine-specific paths."""
+        """Find string literals that look like absolute, machine-specific paths.
+
+        Test files are skipped: tests use absolute paths on purpose (to check path handling,
+        or as fixed inputs) and never need to run on another machine's data folders.
+        """
         hits: list[tuple[str, Location]] = []
         for source in project.parsed:
+            if source.is_test:
+                continue
             assert source.tree is not None
             hits.extend(
                 (value, source.location(line)) for value, line in absolute_paths(source.tree)

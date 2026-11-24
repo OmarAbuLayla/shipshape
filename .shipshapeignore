@@ -1,0 +1,6 @@
+# Files Shipshape leaves out when it reviews this repository. Every report lists what was left
+# out, so the scores stay traceable. Syntax: gitignore-style patterns, plus "check:<id>" lines.
+
+# Small example projects with deliberately planted problems, used to measure the checks
+# (see docs/corpus.md). They are test data, not Shipshape's own code.
+engine/corpus/fixtures/

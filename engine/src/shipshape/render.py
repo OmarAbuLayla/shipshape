@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.text import Text
 
 from shipshape.evaluation import EvalResult
+from shipshape.export import describe_exclusions
 from shipshape.models import Dimension, EdgeKind, Edit, Location, NodeKind, Report, Severity
 
 SEVERITY_STYLE: dict[Severity, str] = {
@@ -52,6 +53,12 @@ def render_report(report: Report, console: Console) -> None:
         scorecard.add_row(dimension.value.capitalize(), _score_bar(score), f"{score:>3}")
     console.print(scorecard)
     console.print(f"\nOverall grade: [bold]{report.grade}[/]  [grey58](rough guide)[/]\n")
+    excluded = describe_exclusions(report.exclusions)
+    if excluded:
+        console.print("[bold]Not included in the scores[/] (on this project's own request):")
+        for line in excluded:
+            console.print(f"  - {line.replace('`', '')}", highlight=False, markup=False)
+        console.print()
 
     if not report.findings:
         console.print("[green]No findings.[/]")

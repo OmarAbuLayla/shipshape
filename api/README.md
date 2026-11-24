@@ -16,6 +16,7 @@ Run it from the repository root so it finds the `.env` file with your LLM settin
 | GET | `/api/scans` | Past scans, newest first |
 | GET | `/api/scans/{id}` | Status and progress of one scan |
 | GET | `/api/scans/{id}/report` | The full report (findings, graph, explanations) |
+| GET | `/api/scans/{id}/export?format=md` | Download the findings as Markdown (`md`), `json` or `csv` |
 | DELETE | `/api/scans/{id}` | Forget a scan |
 
 Uploaded code is unpacked into a temporary folder and deleted when the scan finishes. Zips are checked before extraction: no absolute paths, no `..`, no links, and size and file-count limits.

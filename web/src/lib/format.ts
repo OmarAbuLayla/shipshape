@@ -1,4 +1,4 @@
-import type { Location, Severity } from "./types";
+import type { Exclusions, Location, Severity } from "./types";
 
 const SEVERITY_RANK: Record<Severity, number> = { critical: 0, major: 1, minor: 2 };
 
@@ -54,4 +54,31 @@ export function providerName(provider: string | null | undefined): string {
 
 export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** Keep the last ``keep`` path segments, e.g. ".../discovery/curation.py", for tight spaces. */
+export function shortPath(path: string, keep = 2): string {
+  const parts = path.split("/");
+  return parts.length > keep + 1 ? `…/${parts.slice(-keep).join("/")}` : path;
+}
+
+/** One sentence per kind of exclusion (mirrors the engine's ``describe_exclusions``). */
+export function exclusionLines(ex: Exclusions | undefined): string[] {
+  if (!ex) return [];
+  const lines: string[] = [];
+  if (ex.files_excluded) {
+    const shown = ex.patterns.slice(0, 6).join(", ") + (ex.patterns.length > 6 ? ", ..." : "");
+    lines.push(`${plural(ex.files_excluded, "file")} left out by .shipshapeignore (${shown}).`);
+  }
+  if (ex.disabled_checks.length) lines.push(`Checks switched off: ${ex.disabled_checks.join(", ")}.`);
+  const inline = new Map<string, number>();
+  for (const s of ex.suppressed) {
+    if (s.how === "inline comment") inline.set(s.check_id, (inline.get(s.check_id) ?? 0) + 1);
+  }
+  if (inline.size) {
+    const total = [...inline.values()].reduce((a, b) => a + b, 0);
+    const ids = [...inline.entries()].map(([id, n]) => `${id} (${n})`).join(", ");
+    lines.push(`${plural(total, "place")} marked "# shipshape: ignore" in the code: ${ids}.`);
+  }
+  return lines;
 }

@@ -1,5 +1,5 @@
-import { Alert, Book, Check, Sparkle } from "../components/icons";
-import { capitalize, formatLocation, plural, splitSteps } from "../lib/format";
+import { Alert, Book, Check } from "../components/icons";
+import { capitalize, exclusionLines, formatLocation, plural, shortPath, splitSteps } from "../lib/format";
 import type { ViewNode } from "../lib/graphModel";
 import type { Finding, Report } from "../lib/types";
 import { Diff } from "./Diff";
@@ -105,9 +105,7 @@ function FindingDetail({ finding, number, onLocate }: { finding: Finding; number
             <Paragraphs text={finding.message} />
           </div>
           <div className="cta">
-            <p style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
-              <Sparkle size={16} /> Want this in plain language, with a checked fix?
-            </p>
+            <p style={{ fontWeight: 600 }}>Want this in plain language, with a checked fix?</p>
             <p className="muted">Start a new scan with “Explain findings with AI” turned on.</p>
           </div>
         </>
@@ -117,8 +115,8 @@ function FindingDetail({ finding, number, onLocate }: { finding: Finding; number
         <h4>Where</h4>
         <div className="locations">
           {finding.locations.slice(0, 12).map((location, i) => (
-            <button key={i} onClick={() => onLocate(location.path)} title="Show on the map">
-              {formatLocation(location)}
+            <button key={i} onClick={() => onLocate(location.path)} title={`${formatLocation(location)} · show on the map`}>
+              {formatLocation({ ...location, path: shortPath(location.path) })}
             </button>
           ))}
           {finding.locations.length > 12 && (
@@ -182,13 +180,14 @@ function ProjectDetail({ report, onSelect }: { report: Report; onSelect: (i: num
       {stats && (
         <p className="cost-line">
           {stats.findings_explained} explained by {stats.model} · {stats.fixes_verified} verified fixes ·{" "}
-          {stats.api_calls} API calls{stats.estimated_cost_usd !== null ? ` · about $${stats.estimated_cost_usd.toFixed(3)}` : ""}
+          {stats.api_calls} API calls{stats.api_calls > 0 && stats.estimated_cost_usd !== null ? ` · about $${stats.estimated_cost_usd.toFixed(3)}` : ""}
           {stats.cache_hits ? ` · ${stats.cache_hits} from cache` : ""}
         </p>
       )}
       {report.check_errors.map((error) => (
         <div className="notice" key={error}>{error}</div>
       ))}
+      <ExcludedNote report={report} />
       <FindingLinks
         indices={report.findings.map((_, i) => i).slice(0, 8)}
         report={report}
@@ -221,6 +220,23 @@ function FindingLinks({ indices, report, onSelect, empty, title = "Findings here
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** What the project asked to leave out, so the scores can always be traced back. */
+function ExcludedNote({ report }: { report: Report }) {
+  const lines = exclusionLines(report.exclusions);
+  if (!lines.length) return null;
+  return (
+    <div className="excluded-note">
+      <p className="eyebrow">Not included in the scores</p>
+      <ul>
+        {lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      <p className="hint">Set by the project itself, in .shipshapeignore files and inline comments.</p>
     </div>
   );
 }

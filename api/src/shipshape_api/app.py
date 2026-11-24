@@ -17,8 +17,10 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from shipshape import __version__ as engine_version
+from shipshape.export import ExportFormat, export
 from shipshape.llm.explain import DEFAULT_MAX_FINDINGS
 from shipshape.llm.settings import SettingsError, load_settings
+from shipshape.models import Report
 
 from shipshape_api import __version__
 from shipshape_api.jobs import ClientFactory, ScanJob, ScanRunner, default_client_factory
@@ -26,6 +28,19 @@ from shipshape_api.store import ScanStore, ScanSummary
 from shipshape_api.uploads import CHUNK, UploadError, extract_project, save_stream
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+EXPORT_TYPES = {
+    ExportFormat.JSON: "application/json",
+    ExportFormat.MARKDOWN: "text/markdown; charset=utf-8",
+    ExportFormat.CSV: "text/csv; charset=utf-8",
+}
+
+
+def _safe_name(name: str) -> str:
+    """A file-name-safe version of a project name (letters, digits, dash, underscore)."""
+    cleaned = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in name).strip("-")
+    return cleaned or "project"
+
+
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
@@ -158,6 +173,23 @@ def create_app(
         if report is None:
             raise HTTPException(409, "The report is not ready.")
         return Response(report, media_type="application/json")
+
+    @app.get("/api/scans/{scan_id}/export")
+    def export_report(scan_id: str, format: ExportFormat = ExportFormat.MARKDOWN) -> Response:
+        """Download the findings as JSON, Markdown (``md``) or CSV, with or without AI text."""
+        summary = store.get(scan_id)
+        if summary is None:
+            raise HTTPException(404, "No such scan.")
+        raw = store.report(scan_id)
+        if raw is None:
+            raise HTTPException(409, "The report is not ready.")
+        body = export(Report.model_validate_json(raw), format)
+        filename = f"{_safe_name(summary.name)}-shipshape.{format.value}"
+        return Response(
+            body,
+            media_type=EXPORT_TYPES[format],
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     @app.delete("/api/scans/{scan_id}", status_code=204)
     def delete_scan(scan_id: str) -> None:

@@ -8,9 +8,10 @@ from pathlib import Path
 from shipshape import __version__
 from shipshape.checks import Check, default_checks
 from shipshape.graph import build_graph
-from shipshape.models import SEVERITY_ORDER, Finding, ProjectStats, Report
+from shipshape.models import SEVERITY_ORDER, Exclusions, Finding, ProjectStats, Report
 from shipshape.project import Project
 from shipshape.scoring import dimension_scores, overall_grade
+from shipshape.suppress import apply_suppressions
 
 
 def analyze(root: Path, checks: Sequence[Check] | None = None) -> Report:
@@ -23,14 +24,19 @@ def analyze(root: Path, checks: Sequence[Check] | None = None) -> Report:
 
 
 def analyze_project(project: Project, checks: Sequence[Check] | None = None) -> Report:
-    """Like :func:`analyze`, for a project that is already loaded."""
-    findings: list[Finding] = []
+    """Like :func:`analyze`, for a project that is already loaded.
+
+    The project's own ignore rules are applied before scoring; everything they remove is listed
+    in ``Report.exclusions``. The scoring formula itself never changes.
+    """
+    raw: list[Finding] = []
     errors: list[str] = []
     for check in checks if checks is not None else default_checks():
         try:
-            findings.extend(check.run(project))
+            raw.extend(check.run(project))
         except Exception as exc:  # one broken check must not hide all other results
             errors.append(f"{check.id}: {type(exc).__name__}: {exc}")
+    findings, suppressed = apply_suppressions(project, raw)
     findings.sort(key=lambda f: (SEVERITY_ORDER[f.severity], f.dimension, f.check_id))
     scores = dimension_scores(findings)
     graph = None
@@ -52,4 +58,11 @@ def analyze_project(project: Project, checks: Sequence[Check] | None = None) -> 
         grade=overall_grade(scores),
         check_errors=errors,
         graph=graph,
+        exclusions=Exclusions(
+            ignore_files=list(project.ignore.files),
+            patterns=[p.describe() for p in project.ignore.patterns],
+            files_excluded=len(project.excluded),
+            disabled_checks=list(project.ignore.disabled_checks),
+            suppressed=suppressed,
+        ),
     )

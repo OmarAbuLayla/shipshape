@@ -6,9 +6,10 @@ import ast
 import fnmatch
 import warnings
 from bisect import bisect_right
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 
+from shipshape.ignore import IgnoreRules, load_rules
 from shipshape.models import Location
 from shipshape.notebooks import NotebookError, notebook_to_source
 from shipshape.scanner import discover_files
@@ -95,6 +96,8 @@ class Project:
     root: Path
     sources: tuple[SourceFile, ...]
     files: tuple[str, ...]
+    ignore: IgnoreRules = field(default_factory=IgnoreRules)
+    excluded: tuple[str, ...] = ()  # files left out by .shipshapeignore patterns
 
     @property
     def name(self) -> str:
@@ -146,12 +149,21 @@ class Project:
 
     @classmethod
     def load(cls, root: Path) -> Project:
-        """Read and parse every Python file and notebook under ``root``."""
+        """Read and parse every Python file and notebook under ``root``.
+
+        Files matched by a ``.shipshapeignore`` pattern are left out entirely (and listed in
+        ``excluded``), as if they were not part of the project.
+        """
         root = root.resolve()
+        found = [(path, path.relative_to(root).as_posix()) for path in discover_files(root)]
+        rules = load_rules(root, [rel for _, rel in found])
         sources: list[SourceFile] = []
         files: list[str] = []
-        for path in discover_files(root):
-            rel = path.relative_to(root).as_posix()
+        excluded: list[str] = []
+        for path, rel in found:
+            if rules.ignores(rel):
+                excluded.append(rel)
+                continue
             files.append(rel)
             if path.suffix not in {".py", ".ipynb"}:
                 continue
@@ -169,4 +181,10 @@ class Project:
             else:
                 text, starts = raw, ()
             sources.append(SourceFile(rel, text, _parse(text), count_code_lines(text), starts))
-        return cls(root=root, sources=tuple(sources), files=tuple(files))
+        return cls(
+            root=root,
+            sources=tuple(sources),
+            files=tuple(files),
+            ignore=rules,
+            excluded=tuple(excluded),
+        )

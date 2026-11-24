@@ -190,3 +190,20 @@ def test_serves_the_web_app_with_client_side_routes(tmp_path: Path) -> None:
         assert "outside" not in client.get("/../secret.txt").text
         assert client.get("/api/nope").status_code == 404
         assert client.get("/api/health").json()["status"] == "ok"
+
+
+def test_export_in_every_format(client: TestClient) -> None:
+    started = client.post("/api/scans", json={"path": str(FIXTURES / "leaky_emg")}).json()
+    url = f"/api/scans/{_wait(client, started['id'])['id']}/export"
+
+    md = client.get(url)
+    csv_text = client.get(url, params={"format": "csv"})
+    as_json = client.get(url, params={"format": "json"})
+
+    assert md.status_code == 200
+    assert md.text.startswith("# Shipshape report: leaky_emg")
+    assert 'filename="leaky_emg-shipshape.md"' in md.headers["content-disposition"]
+    assert csv_text.text.splitlines()[0].startswith("finding,severity,dimension")
+    assert as_json.json()["project_name"] == "leaky_emg"
+    assert client.get(url, params={"format": "pdf"}).status_code == 422
+    assert client.get("/api/scans/nope/export").status_code == 404

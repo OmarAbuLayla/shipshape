@@ -1,3 +1,8 @@
+// Self-hosted brand fonts: Geist for UI text, IBM Plex Mono for code, paths and metrics.
+import "@fontsource-variable/geist";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/600.css";
 import "@xyflow/react/dist/style.css";
 import "./styles.css";
 

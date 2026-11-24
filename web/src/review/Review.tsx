@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { formatWhen, plural, scoreColor } from "../lib/format";
+import { exclusionLines, formatWhen, plural, scoreColor } from "../lib/format";
 import { boxesForFinding, buildViewGraph, defaultExpanded, findingsOfBox } from "../lib/graphModel";
 import { DIMENSIONS, type Dimension, type Report, type ScanSummary } from "../lib/types";
 import { DetailPanel } from "./DetailPanel";
 import { IssueList } from "./IssueList";
+import { ExportMenu } from "./ExportMenu";
 import { MapView, type FocusRequest } from "./MapView";
 
 const SHORT_LABEL: Record<Dimension, string> = {
@@ -65,18 +66,22 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
   };
 
   const s = report.stats;
+  const excluded = exclusionLines(report.exclusions);
   return (
     <div className="review">
       <header className="review-head">
         <div className="review-title">
-          <span className={`grade ${report.grade}`} title="Overall grade (rough guide)">{report.grade}</span>
           <div style={{ minWidth: 0 }}>
             <h1>{report.project_name}</h1>
             <div className="meta">
+              <span title="Overall grade (rough guide)">grade <b className="mono">{report.grade}</b></span> ·{" "}
               {plural(s.python_files, "Python file")}
               {s.notebooks ? `, ${plural(s.notebooks, "notebook")}` : ""} · {s.lines_of_code.toLocaleString()} lines ·{" "}
               {plural(report.findings.length, "finding")} · scanned {formatWhen(scan.created_at)}
               {report.explain_stats ? ` · explained by ${report.explain_stats.model}` : ""}
+              {excluded.length > 0 && (
+                <span title={excluded.join("\n")}> · some files and lines left out on request</span>
+              )}
             </div>
           </div>
         </div>
@@ -99,6 +104,7 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
           })}
         </div>
         <div className="actions">
+          <ExportMenu scanId={scan.id} />
           <Link className="btn small" to="/">New scan</Link>
         </div>
       </header>

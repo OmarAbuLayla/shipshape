@@ -16,7 +16,8 @@ from shipshape.project import Project
 
 from .conftest import FIXTURES_DIR
 
-SECRET = "abcd1234efgh5678ijkl9012"  # the fake key in the secrets fixture
+# The fake key planted in the secrets fixture.
+SECRET = "abcd1234efgh5678ijkl9012"  # shipshape: ignore[security.hardcoded-secret] fake
 
 
 class FakeClient:

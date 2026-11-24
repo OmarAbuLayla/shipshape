@@ -12,7 +12,7 @@ from typing import ClassVar
 from shipshape.astutil import split_words, string_constants
 from shipshape.checks.base import Check, plural
 from shipshape.models import Dimension, Finding, Location, Severity
-from shipshape.project import Project
+from shipshape.project import Project, SourceFile
 
 ENV_FILE = re.compile(r"^\.env(\..+)?$")
 SAFE_ENV_SUFFIXES = (".example", ".sample", ".template", ".dist")
@@ -174,15 +174,40 @@ class HardcodedSecret(Check):
         if not hits:
             return []
         by_path = {s.path: s for s in project.sources}
+        real = {key: value for key, value in hits.items() if not by_path[key[0]].is_test}
+        tests = {key: value for key, value in hits.items() if by_path[key[0]].is_test}
+        findings = []
+        if real:
+            message = (
+                f"{plural(len(real), 'credential-like value is', 'credential-like values are')} "
+                f"written directly into the code. Anyone who can read the code, including "
+                f"everyone on GitHub if it is pushed, can use them. Read them from environment "
+                f"variables (or a git-ignored .env file) and rotate any key that was ever "
+                f"committed."
+            )
+            findings.append(self._finding(message, real, by_path))
+        if tests:
+            message = (
+                f"{plural(len(tests), 'credential-like value')} found in test files. Tests "
+                f"often need a fake key, which is fine, but a real one pasted into a test leaks "
+                f"just like anywhere else. If the value is fake, say so on that line with "
+                f"`# shipshape: ignore[{self.id}]`; if it is real, move it to an environment "
+                f"variable and rotate it."
+            )
+            findings.append(self._finding(message, tests, by_path, Severity.MINOR))
+        return findings
+
+    def _finding(
+        self,
+        message: str,
+        hits: dict[tuple[str, int], str],
+        by_path: dict[str, SourceFile],
+        severity: Severity | None = None,
+    ) -> Finding:
         locations = [by_path[path].location(line) for path, line in sorted(hits)]
-        message = (
-            f"{plural(len(hits), 'credential-like value is', 'credential-like values are')} "
-            f"written directly into the code. Anyone who can read the code, including everyone "
-            f"on GitHub if it is pushed, can use them. Read them from environment variables "
-            f"(or a git-ignored .env file) and rotate any key that was ever committed."
+        return self.finding(
+            message, locations, evidence=_redact(hits[min(hits)]), severity=severity
         )
-        first = hits[min(hits)]
-        return [self.finding(message, locations, evidence=_redact(first))]
 
 
 def secret_values(tree: ast.AST) -> set[str]:
