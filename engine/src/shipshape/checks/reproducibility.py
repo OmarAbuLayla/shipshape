@@ -65,6 +65,17 @@ WEIGHTED_LAYER_PREFIXES = (
 )
 
 
+def absolute_paths(tree: ast.AST) -> list[tuple[str, int]]:
+    """(value, line) of every string literal that looks like a machine-specific absolute path."""
+    return [
+        (str(node.value), node.lineno)
+        for node in string_constants(tree)
+        if len(str(node.value)) <= 260
+        and "\n" not in str(node.value)
+        and ABSOLUTE_PATH.match(str(node.value))
+    ]
+
+
 class HardcodedPath(Check):
     """Absolute paths that only exist on the author's machine."""
 
@@ -79,10 +90,9 @@ class HardcodedPath(Check):
         hits: list[tuple[str, Location]] = []
         for source in project.parsed:
             assert source.tree is not None
-            for node in string_constants(source.tree):
-                value = str(node.value)
-                if len(value) <= 260 and "\n" not in value and ABSOLUTE_PATH.match(value):
-                    hits.append((value, source.location(node.lineno)))
+            hits.extend(
+                (value, source.location(line)) for value, line in absolute_paths(source.tree)
+            )
         if not hits:
             return []
         message = (

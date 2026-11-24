@@ -2,7 +2,7 @@
 
 Every phase ends with something that can be demonstrated on its own.
 
-Status: Phases 0 and 1 are done.
+Status: Phases 0, 1 and 2 are done.
 
 | Phase | Goal | Demo at the end |
 |---|---|---|

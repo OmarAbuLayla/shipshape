@@ -5,6 +5,7 @@ The analysis engine behind Shipshape. It scans a Python project, including noteb
 ```bash
 shipshape analyze path/to/project              # readable report with a scorecard
 shipshape analyze path/to/project -o out.json  # also write the JSON report
+shipshape map path/to/project --html map.html  # architecture map (interactive page)
 shipshape checks                               # list every check
 shipshape eval corpus/fixtures --strict        # precision/recall against labelled projects
 ```
@@ -18,6 +19,7 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 | Structure | `structure.oversized-file` | Files with 400+ (minor) or 700+ (major) lines of code |
 | | `structure.complex-function` | Cyclomatic complexity of 15 or more (radon) |
 | | `structure.duplicated-package` | The same package copied into several folders |
+| | `structure.import-cycle` | Modules that import each other at module level (lazy imports inside functions don't count) |
 | Reproducibility | `repro.hardcoded-path` | Absolute, machine-specific paths in string literals |
 | | `repro.missing-environment` | Third-party imports but no requirements/environment/pyproject file |
 | | `repro.unpinned-dependencies` | Requirements without exact versions |
@@ -34,10 +36,16 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 
 Grouped issues become one finding with many locations, so a project with 100 prints gets one finding, not 100. Thresholds are constants at the top of each check module.
 
+## Architecture map
+
+Every report includes a `graph`: files, notebooks and folders as nodes, internal imports as edges, test files linked to what they test, hard-coded data paths as external nodes, and missing pieces (no tests, no environment file) as dashed ghost nodes. Each node lists the findings pinned to it. Imports are resolved the way projects are actually run: `src/` layouts, packages, relative imports and "import the file next to me" all work, and when two files share a name the closest one wins.
+
+`shipshape map --html map.html` writes a standalone page that draws it. Large projects open in a folder overview (one box per folder, arrows labelled with import counts), and "All files" shows every module. The page loads its layout library from a CDN, so it needs an internet connection.
+
 ## Measuring the checks
 
 `corpus/fixtures/` holds small projects with planted issues and an `expected.yaml` each, including a clean negative control. `tests/test_corpus.py` requires every check to find exactly those issues: no misses and no false positives. See [docs/corpus.md](../docs/corpus.md) for labelling your own projects.
 
 ## Limitations
 
-The checks are static heuristics. The leakage check recognises common split patterns, not leakage hidden in custom code or in how the data was collected, so it is phrased as a question. Thresholds were tuned on a small corpus. Type checking with mypy is not included, because it needs the scanned project's dependencies installed to be meaningful.
+The checks are static heuristics. The leakage check recognises common split patterns, not leakage hidden in custom code or in how the data was collected, so it is phrased as a question. Thresholds were tuned on a small corpus. The map shows imports and literal file paths, not true data flow, and dynamic imports (`importlib`, `sys.path` tricks) are invisible to it. Type checking with mypy is not included, because it needs the scanned project's dependencies installed to be meaningful.

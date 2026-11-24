@@ -1,0 +1,5 @@
+# orders <-> customers import each other at module level. reports.py imports orders
+# inside a function, so it is not part of the load-time cycle and must not be flagged.
+expected:
+  - {check: structure.import-cycle, path: app/customers.py, line: 3}
+  - {check: structure.import-cycle, path: app/orders.py, line: 3}

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from shipshape import __version__
 from shipshape.checks import Check, default_checks
+from shipshape.graph import build_graph
 from shipshape.models import SEVERITY_ORDER, Finding, ProjectStats, Report
 from shipshape.project import Project
 from shipshape.scoring import dimension_scores, overall_grade
@@ -28,6 +29,11 @@ def analyze(root: Path, checks: Sequence[Check] | None = None) -> Report:
             errors.append(f"{check.id}: {type(exc).__name__}: {exc}")
     findings.sort(key=lambda f: (SEVERITY_ORDER[f.severity], f.dimension, f.check_id))
     scores = dimension_scores(findings)
+    graph = None
+    try:
+        graph = build_graph(project, findings)
+    except Exception as exc:  # the report is still useful without a map
+        errors.append(f"graph: {type(exc).__name__}: {exc}")
     return Report(
         engine_version=__version__,
         project_name=project.name,
@@ -41,4 +47,5 @@ def analyze(root: Path, checks: Sequence[Check] | None = None) -> Report:
         scores=scores,
         grade=overall_grade(scores),
         check_errors=errors,
+        graph=graph,
     )

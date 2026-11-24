@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
 from shipshape.evaluation import EvalResult
-from shipshape.models import Dimension, Location, Report, Severity
+from shipshape.models import Dimension, EdgeKind, Location, NodeKind, Report, Severity
 
 SEVERITY_STYLE: dict[Severity, str] = {
     Severity.CRITICAL: "bold red",
@@ -74,6 +76,44 @@ def render_report(report: Report, console: Console) -> None:
 
     for error in report.check_errors:
         console.print(f"[yellow]Check failed:[/] {error}")
+
+
+def render_map_summary(report: Report, console: Console) -> None:
+    """Print what the architecture map contains, for a quick look without a browser."""
+    graph = report.graph
+    if graph is None:
+        console.print("[yellow]No map could be built.[/]")
+        return
+    kinds = Counter(node.kind.value for node in graph.nodes)
+    edges = Counter(edge.kind.value for edge in graph.edges)
+    console.print(f"[bold]{report.project_name}[/]  map")
+    console.print(
+        "  Nodes: " + ", ".join(f"{count} {kind}" for kind, count in sorted(kinds.items()))
+    )
+    console.print("  Edges: " + (", ".join(f"{c} {k}" for k, c in sorted(edges.items())) or "none"))
+
+    imported_by = Counter(e.target for e in graph.edges if e.kind is EdgeKind.IMPORT)
+    if imported_by:
+        console.print("\n[bold]Most depended-on modules[/]")
+        for path, count in imported_by.most_common(5):
+            console.print(f"  {count:>3}  {path}")
+
+    # Package __init__ files are loaded implicitly, so "nothing imports them" means nothing.
+    tested = {e.target for e in graph.edges if e.kind is EdgeKind.TEST}
+    tested |= {n.id for n in graph.nodes if n.label == "__init__.py"}
+    library = [n for n in graph.nodes if n.kind is NodeKind.MODULE and n.role == "library"]
+    unused = [n.id for n in library if n.id not in imported_by and n.id not in tested]
+    if unused:
+        console.print("\n[bold]Library modules nothing imports[/] [grey58](dead code?)[/]")
+        for path in unused[:10]:
+            console.print(f"       {path}")
+        if len(unused) > 10:
+            console.print(f"       +{len(unused) - 10} more")
+    if graph.unresolved_imports:
+        console.print(
+            f"\n[grey58]{len(graph.unresolved_imports)} local-looking imports could not be "
+            f"matched to a file (dynamic imports or sys.path tricks).[/]"
+        )
 
 
 def _ratio(value: float | None) -> str:

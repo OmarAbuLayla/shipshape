@@ -18,7 +18,12 @@ from shipshape.checks.reproducibility import (
 )
 from shipshape.checks.ruff import RULES, RuffCheck
 from shipshape.checks.security import EnvFileNotIgnored, HardcodedSecret
-from shipshape.checks.structure import ComplexFunction, DuplicatedPackage, OversizedFile
+from shipshape.checks.structure import (
+    ComplexFunction,
+    DuplicatedPackage,
+    ImportCycle,
+    OversizedFile,
+)
 from shipshape.checks.testing import NoTests, UntestedModules
 
 __all__ = ["RULES", "Check", "default_checks"]
@@ -32,6 +37,7 @@ def default_checks() -> list[Check]:
         OversizedFile(),
         ComplexFunction(),
         DuplicatedPackage(),
+        ImportCycle(),
         HardcodedPath(),
         MissingEnvironment(),
         UnpinnedDependencies(),

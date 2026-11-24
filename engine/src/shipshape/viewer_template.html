@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shipshape map</title>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+<style>
+  :root {
+    --bg: #f4f6f9; --surface: #fff; --line: #d7dce5; --fg: #141922; --muted: #586273;
+    --accent: #3451c7; --crit: #d92d3a; --crit-soft: #fde7e9; --major: #c96a00;
+    --major-soft: #fdf0dc; --minor: #6b7894; --minor-soft: #e9edf4; --ok: #23824a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 14px/1.5 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg);
+         display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 10px 16px;
+           background: var(--surface); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; }
+  .grade { font-weight: 800; color: #fff; background: var(--accent); border-radius: 6px; padding: 2px 8px; }
+  .muted { color: var(--muted); }
+  .controls { margin-left: auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .legend { display: flex; gap: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  main { display: grid; grid-template-columns: 1fr 380px; min-height: 0; }
+  #cy { min-height: 0; }
+  aside { background: var(--surface); border-left: 1px solid var(--line); padding: 16px; overflow-y: auto; }
+  aside h2 { font-size: 15px; margin: 0 0 4px; word-break: break-all; }
+  .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; margin: 10px 0; }
+  .finding { border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+  .finding.critical { border-left-color: var(--crit); }
+  .finding.major { border-left-color: var(--major); }
+  .finding.minor { border-left-color: var(--minor); }
+  .finding b { display: block; }
+  .finding p { margin: 6px 0; font-size: 13px; }
+  .chip { font: 11px ui-monospace, Consolas, monospace; text-transform: uppercase; padding: 1px 6px; border-radius: 99px; }
+  .chip.critical { background: var(--crit-soft); color: var(--crit); }
+  .chip.major { background: var(--major-soft); color: var(--major); }
+  .chip.minor { background: var(--minor-soft); color: var(--minor); }
+  .concept { font-size: 12px; color: var(--accent); }
+  .where { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); }
+  #error { padding: 24px; display: none; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; grid-template-rows: 60vh auto; } aside { border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Shipshape map</h1>
+  <span class="grade" id="grade"></span>
+  <span class="muted" id="counts"></span>
+  <div class="legend">
+    <span><i style="background:var(--crit-soft);border:1px solid var(--crit)"></i>critical</span>
+    <span><i style="background:var(--major-soft);border:1px solid var(--major)"></i>major</span>
+    <span><i style="background:var(--minor-soft);border:1px solid var(--minor)"></i>minor</span>
+    <span><i style="background:#fff;border:1px dashed var(--muted)"></i>missing</span>
+    <span>— import</span><span style="color:var(--ok)">- - test</span><span style="color:var(--major)">··· reads</span>
+  </div>
+  <div class="controls">
+    <label>View <select id="view"><option value="overview">Folders overview</option><option value="files">All files</option></select></label>
+    <label><input type="checkbox" id="folders" checked> Folder boxes</label>
+    <label><input type="checkbox" id="tests" checked> Tests</label>
+    <label>Layout <select id="layout"><option value="dagre">Layered</option><option value="cose">Force</option></select></label>
+  </div>
+</header>
+<main>
+  <div id="cy"></div>
+  <aside id="panel"></aside>
+</main>
+<div id="error">The map library could not be loaded. It comes from cdn.jsdelivr.net, so this page needs an internet connection.</div>
+<script>
+const REPORT = /*__REPORT__*/null;
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const graph = REPORT.graph || { nodes: [], edges: [], project_findings: [] };
+const nodesById = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
+
+document.getElementById("title").textContent = REPORT.project_name;
+document.getElementById("grade").textContent = REPORT.grade;
+document.getElementById("counts").textContent =
+  `${graph.nodes.filter((n) => n.kind !== "folder").length} nodes · ${graph.edges.length} edges · ${REPORT.findings.length} findings`;
+
+function where(loc) {
+  if (loc.path === ".") return "(project)";
+  return loc.path + (loc.cell ? ` [cell ${loc.cell}]` : "") + (loc.start_line ? `:${loc.start_line}` : "");
+}
+
+// Show a finding; `paths` limits the listed locations to the clicked box (null = all).
+function findingHtml(index, paths) {
+  const f = REPORT.findings[index];
+  const own = paths ? f.locations.filter((l) => paths.has(l.path)) : [];
+  const locs = own.length ? own : f.locations;
+  const shown = locs.slice(0, 6).map(where).join(", ") + (locs.length > 6 ? ` … (+${locs.length - 6})` : "");
+  return `<div class="finding ${f.severity}"><span class="chip ${f.severity}">${f.severity}</span>
+    <b>${esc(f.title)}</b><p>${esc(f.message)}</p>
+    <div class="concept">Concept: ${esc(f.concept)}</div><div class="where">${esc(shown)}</div></div>`;
+}
+
+const SEV = {
+  critical: ["#fde7e9", "#d92d3a"], major: ["#fdf0dc", "#c96a00"], minor: ["#e9edf4", "#6b7894"],
+};
+const SEVERITY_RANK = { critical: 0, major: 1, minor: 2 };
+const worst = (severities) =>
+  severities.filter(Boolean).sort((a, b) => SEVERITY_RANK[a] - SEVERITY_RANK[b])[0] || null;
+const CODE_KINDS = ["module", "notebook", "test"];
+const degree = {};
+graph.edges.forEach((e) => {
+  degree[e.source] = (degree[e.source] || 0) + 1;
+  degree[e.target] = (degree[e.target] || 0) + 1;
+});
+
+// Empty package __init__ files with no imports and no findings only add clutter.
+const isClutter = (n) => n.label === "__init__.py" && !n.findings.length && !degree[n.id];
+const groupOf = (n) => (CODE_KINDS.includes(n.kind) && n.parent ? n.parent : n.id);
+
+const codeCount = graph.nodes.filter((n) => CODE_KINDS.includes(n.kind)).length;
+let mode = codeCount > 25 ? "overview" : "files";
+document.getElementById("view").value = mode;
+
+// Overview: one box per folder (plus root files, ghosts, configs, external data), edges summed.
+function buildGroups(showTests) {
+  const groups = {};
+  for (const n of graph.nodes) {
+    if (n.kind === "folder" || isClutter(n) || (!showTests && n.kind === "test")) continue;
+    const id = groupOf(n);
+    const g = groups[id] || (groups[id] = { id, members: [], findings: new Set(), severities: [] });
+    g.members.push(n);
+    n.findings.forEach((i) => g.findings.add(i));
+    g.severities.push(n.worst_severity);
+  }
+  for (const g of Object.values(groups)) {
+    const folder = nodesById[g.id];
+    if (folder && folder.kind === "folder") {
+      folder.findings.forEach((i) => g.findings.add(i));
+      g.severities.push(folder.worst_severity);
+    }
+    const allTests = g.members.every((m) => m.kind === "test");
+    const single = g.members.length === 1 && g.members[0].id === g.id;
+    g.kind = single ? g.members[0].kind : allTests ? "test" : "group";
+    g.label = single ? g.members[0].label : `${g.id}/  ·  ${g.members.length} files`;
+    g.severity = worst(g.severities);
+  }
+  return groups;
+}
+
+function colors(severity) {
+  return SEV[severity] || ["#ffffff", "#aab3c2"];
+}
+
+function overviewElements(showTests) {
+  const els = [];
+  const groups = buildGroups(showTests);
+  for (const g of Object.values(groups)) {
+    const [fill, stroke] = colors(g.severity);
+    const badge = g.findings.size ? ` (${g.findings.size})` : "";
+    els.push({ group: "nodes", data: { id: g.id, label: g.label + badge, kind: g.kind, fill, stroke } });
+  }
+  const counts = {};
+  for (const e of graph.edges) {
+    const s = nodesById[e.source];
+    const t = nodesById[e.target];
+    if (!s || !t) continue;
+    const gs = groupOf(s);
+    const gt = groupOf(t);
+    if (gs === gt || !groups[gs] || !groups[gt]) continue;
+    const key = `${gs}|${gt}|${e.kind}`;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  Object.entries(counts).forEach(([key, count], i) => {
+    const [source, target, kind] = key.split("|");
+    els.push({ group: "edges", data: {
+      id: "g" + i, source, target, kind,
+      width: 1 + Math.log2(count) * 1.3, label: count > 1 ? String(count) : "",
+    } });
+  });
+  return els;
+}
+
+function fileElements(showTests, showFolders) {
+  const els = [];
+  const visible = new Set();
+  for (const n of graph.nodes) {
+    if (isClutter(n) || (!showTests && n.kind === "test")) continue;
+    if (n.kind === "folder" && !showFolders) continue;
+    visible.add(n.id);
+  }
+  for (const n of graph.nodes) {
+    if (!visible.has(n.id)) continue;
+    const [fill, stroke] = n.kind === "folder" ? ["#eef1f6", "#c5ccd8"] : colors(n.worst_severity);
+    const badge = n.findings.length && n.kind !== "folder" ? ` (${n.findings.length})` : "";
+    const parent = showFolders && n.parent && visible.has(n.parent) ? n.parent : undefined;
+    els.push({ group: "nodes", data: { id: n.id, label: n.label + badge, kind: n.kind, parent, fill, stroke } });
+  }
+  graph.edges.forEach((e, i) => {
+    if (visible.has(e.source) && visible.has(e.target)) {
+      els.push({ group: "edges", data: {
+        id: "e" + i, source: e.source, target: e.target, kind: e.kind, width: 1.3, label: "",
+      } });
+    }
+  });
+  return els;
+}
+
+function showProject() {
+  const s = REPORT.stats;
+  const scores = Object.entries(REPORT.scores)
+    .map(([k, v]) => `<span>${esc(k)}</span><span>${v}/100</span>`).join("");
+  const hint = mode === "overview"
+    ? " Each box is a folder; numbers on arrows count the imports between folders."
+    : "";
+  document.getElementById("panel").innerHTML = `<h2>${esc(REPORT.project_name)}</h2>
+    <div class="muted">${s.python_files} Python files, ${s.notebooks} notebooks, ${s.lines_of_code} lines of code</div>
+    <div class="stats">${scores}</div>
+    <p class="muted">Click a box to see its findings.${hint}</p>
+    ${graph.project_findings.map((i) => findingHtml(i, null)).join("")}`;
+}
+
+function showGroup(id) {
+  const g = buildGroups(document.getElementById("tests").checked)[id];
+  if (!g || (g.members.length === 1 && g.members[0].id === id)) return showNode(id);
+  const paths = new Set(g.members.map((m) => m.id).concat([id]));
+  const rows = [...g.members]
+    .sort((a, b) => b.lines_of_code - a.lines_of_code)
+    .map((m) => `<span class="muted">${esc(m.label)}</span>` +
+      `<span>${m.lines_of_code} lines${m.worst_severity ? " · " + m.worst_severity : ""}</span>`)
+    .join("");
+  const findings = [...g.findings].sort((a, b) => a - b).map((i) => findingHtml(i, paths)).join("");
+  document.getElementById("panel").innerHTML = `<h2>${esc(id)}/</h2>
+    <div class="muted">${g.members.length} files</div>
+    <div class="stats">${rows}</div>
+    ${findings || '<p class="muted">No findings here.</p>'}`;
+}
+
+function showNode(id) {
+  const n = nodesById[id];
+  if (!n) return showProject();
+  const incoming = graph.edges.filter((e) => e.target === id).length;
+  const outgoing = graph.edges.filter((e) => e.source === id).length;
+  const rows = [["Kind", n.kind + (n.role ? ` (${n.role})` : "")]];
+  if (CODE_KINDS.includes(n.kind)) {
+    rows.push(["Lines of code", n.lines_of_code], ["Functions", n.functions], ["Classes", n.classes],
+      ["Max complexity", n.max_complexity], ["Packages", n.third_party.join(", ") || "-"]);
+  }
+  rows.push(["Imported by", incoming], ["Imports / reads", outgoing]);
+  const stats = rows.map(([k, v]) => `<span class="muted">${k}</span><span>${esc(v)}</span>`).join("");
+  const findings = n.findings.map((i) => findingHtml(i, new Set([id]))).join("");
+  document.getElementById("panel").innerHTML = `<h2>${esc(n.label)}</h2><div class="where">${esc(n.id)}</div>
+    <div class="stats">${stats}</div>
+    ${findings || '<p class="muted">No findings here.</p>'}`;
+}
+
+if (typeof cytoscape === "undefined") {
+  document.querySelector("main").style.display = "none";
+  document.getElementById("error").style.display = "block";
+} else {
+  if (typeof cytoscapeDagre !== "undefined") cytoscape.use(cytoscapeDagre);
+  const cy = cytoscape({
+    container: document.getElementById("cy"),
+    wheelSensitivity: 0.3,
+    style: [
+      { selector: "node", style: {
+        shape: "round-rectangle", "background-color": "data(fill)", "border-color": "data(stroke)",
+        "border-width": 1.5, label: "data(label)", "font-size": 11, "text-valign": "center",
+        "text-halign": "center", width: "label", height: 26, padding: "8px",
+        "font-family": "Consolas, ui-monospace, monospace", color: "#141922" } },
+      { selector: "node[kind = 'group']", style: { height: 34, "font-size": 12, "font-weight": "bold" } },
+      { selector: "node[kind = 'folder']", style: {
+        "background-opacity": 0.6, "text-valign": "top", "font-size": 12,
+        "font-weight": "bold", color: "#586273", padding: "14px" } },
+      { selector: "node[kind = 'missing']", style: { "border-style": "dashed", "background-color": "#ffffff" } },
+      { selector: "node[kind = 'external']", style: { shape: "barrel", "background-color": "#f1f3f7" } },
+      { selector: "node[kind = 'config']", style: { shape: "tag" } },
+      { selector: "node[kind = 'test']", style: { "border-color": "#23824a" } },
+      { selector: "node:selected", style: { "border-width": 3, "border-color": "#3451c7" } },
+      { selector: "edge", style: {
+        width: "data(width)", "line-color": "#8a94a6", "target-arrow-color": "#8a94a6",
+        "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.8, opacity: 0.8,
+        label: "data(label)", "font-size": 10, color: "#586273", "text-background-color": "#f4f6f9",
+        "text-background-opacity": 1, "text-background-padding": "2px" } },
+      { selector: "edge[kind = 'test']", style: {
+        "line-style": "dashed", "line-color": "#23824a", "target-arrow-color": "#23824a" } },
+      { selector: "edge[kind = 'reads']", style: {
+        "line-style": "dotted", "line-color": "#c96a00", "target-arrow-color": "#c96a00" } },
+    ],
+  });
+  window.cy = cy;  // handy for poking at the graph from the browser console
+
+  const render = () => {
+    mode = document.getElementById("view").value;
+    const showTests = document.getElementById("tests").checked;
+    const showFolders = document.getElementById("folders").checked;
+    document.getElementById("folders").disabled = mode === "overview";
+    cy.elements().remove();
+    cy.add(mode === "overview" ? overviewElements(showTests) : fileElements(showTests, showFolders));
+    const wide = mode === "overview";
+    const options = document.getElementById("layout").value === "dagre" && typeof cytoscapeDagre !== "undefined"
+      ? { name: "dagre", rankDir: "LR", nodeSep: wide ? 30 : 14, rankSep: wide ? 110 : 70, animate: false }
+      : { name: "cose", animate: false, nodeRepulsion: 9000, idealEdgeLength: 110 };
+    cy.layout(options).run();
+    cy.fit(undefined, 30);
+    if (cy.zoom() > 1.1) {  // small projects would otherwise be blown up to giant boxes
+      cy.zoom(1.1);
+      cy.center();
+    }
+    showProject();
+  };
+
+  ["view", "folders", "tests", "layout"].forEach((id) =>
+    document.getElementById(id).addEventListener("change", render));
+  cy.on("tap", "node", (e) => (mode === "overview" ? showGroup(e.target.id()) : showNode(e.target.id())));
+  cy.on("tap", (e) => { if (e.target === cy) showProject(); });
+  render();
+}
+showProject();
+</script>
+</body>
+</html>

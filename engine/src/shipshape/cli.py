@@ -14,7 +14,8 @@ from shipshape import __version__
 from shipshape.analyzer import analyze as run_analysis
 from shipshape.checks import RULES, default_checks
 from shipshape.evaluation import evaluate, load_corpus, load_manifest
-from shipshape.render import render_evaluation, render_report
+from shipshape.render import render_evaluation, render_map_summary, render_report
+from shipshape.viewer import render_map_html
 
 app = typer.Typer(
     add_completion=False,
@@ -55,6 +56,33 @@ def analyze(
         render_report(report, Console())
         if output is not None:
             typer.echo(f"\nJSON report written to {output}")
+
+
+@app.command("map")
+def draw_map(
+    path: Annotated[Path, typer.Argument(help="Project folder to scan.")],
+    html: Annotated[
+        Path | None, typer.Option("--html", help="Write an interactive map page here.")
+    ] = None,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write the graph as JSON here.")
+    ] = None,
+) -> None:
+    """Build the architecture map: files, imports, missing pieces and where findings are."""
+    try:
+        report = run_analysis(path)
+    except NotADirectoryError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    render_map_summary(report, Console())
+    if output is not None and report.graph is not None:
+        output.write_text(report.graph.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        typer.echo(f"\nGraph JSON written to {output}")
+    if html is not None:
+        html.write_text(render_map_html(report), encoding="utf-8")
+        typer.echo(
+            f"\nMap written to {html}. Open it in a browser (needs internet for the layout)."
+        )
 
 
 @app.command("eval")
