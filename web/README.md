@@ -15,6 +15,10 @@ npm run lint && npm run typecheck
 - **New scan**: scan a folder on this computer or upload a `.zip`, optionally with AI explanations (the switch says which provider receives code and roughly what it costs).
 - **Progress**: live steps ("Explaining findings: 4 of 12 done"), then the review opens on its own.
 - **Review**: grade and per-dimension scores on top; issues grouped into *Fix first / Worth fixing / Polish* on the left; the architecture map in the middle; the explanation, highlighted fix diff, heads-up and verification note on the right. Selecting an issue highlights and pans to its boxes; clicking a box filters the issues. Large projects open as one box per folder; open a folder in place with *open ▸* or a double-click.
+- **File view**: double-click a file on the map (or click a finding's location) to zoom in: its functions and classes as blocks with call arrows, the code below with flagged lines marked, a breadcrumb back to the map, and a block panel with size, complexity, calls and callers.
+- **Fixes**: tick the verified fixes to apply, press *Apply*; the before/after page shows the grade and every score, what changed per check, fixes applied in a second round or skipped (with the reason), and downloads for a patch or the fixed project.
+- **Lessons**: a short lesson for every concept, opened from any finding (*Read the lesson*) or the Lessons page.
+- **Profile**: which concepts keep coming up across your projects, and which you resolved, from the local history.
 - **History**: past scans with grade, findings and date.
 
 ## Brand
@@ -24,10 +28,10 @@ The UI follows the "Structured S" brand: warm neutrals (ink `#191919` on paper `
 ## Code layout
 
 ```
-src/lib/        types (mirror the report schema), API client, graph view model, ELK layout,
-                Python highlighter, formatting helpers - all unit-tested, no React
-src/review/     review screen: IssueList, MapView, DetailPanel, Diff
-src/pages/      Home, ScanPage (progress + lazy-loaded review), History
+src/lib/        types (mirror the report schema), API client, graph and block view models, ELK
+                layout, Python highlighter, a small safe Markdown renderer, formatting helpers
+src/review/     review screen: IssueList, MapView, FileView, CodeView, DetailPanel, Diff, ExportMenu
+src/pages/      Home, ScanPage (progress + lazy-loaded review), FixesPage, Lessons, Profile, History
 src/styles.css  the design system: tokens for light and dark, components
 ```
 

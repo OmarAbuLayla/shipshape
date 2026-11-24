@@ -21,7 +21,7 @@ Run it from the repository root so it finds the `.env` file with your LLM settin
 | GET | `/api/scans/{id}/report` | The full report (findings, graph, explanations) |
 | GET | `/api/scans/{id}/export?format=md` | Download the findings as Markdown (`md`), `json` or `csv` |
 | GET | `/api/scans/{id}/source?path=train.py` | The scanned code of one file of the scan (only files that were scanned), and whether it changed since |
-| POST | `/api/scans/{id}/fixes` | Apply verified fixes to a copy and scan it again: `{"findings": [0, 3]}` |
+| POST | `/api/scans/{id}/fixes` | Apply verified fixes to a copy and scan it again: `{"findings": [0, 3]}`; fixes that collide get a second round unless `"second_round": false` |
 | GET | `/api/scans/{id}/fixes` | The last fix run: scores before and after, applied and skipped fixes, the patch |
 | GET | `/api/scans/{id}/fixes/download?format=patch` | The fixes as a patch for `git apply`, or `zip` for the fixed project |
 | DELETE | `/api/scans/{id}` | Forget a scan (and every file kept for it) |
