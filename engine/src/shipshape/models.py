@@ -10,7 +10,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "0.3"
+SCHEMA_VERSION = "0.4"
 
 
 class Severity(StrEnum):
@@ -59,6 +59,59 @@ class Finding(BaseModel):
     message: str = Field(description="Specific, plain-language explanation for this project.")
     locations: list[Location] = Field(min_length=1)
     evidence: str = Field(default="", description="Short excerpt or measurement. Never a secret.")
+    explanation: Explanation | None = None
+
+
+class FixStatus(StrEnum):
+    """Whether a proposed fix survived validation."""
+
+    VERIFIED = "verified"  # applied cleanly, parses, removes the finding, adds no new findings
+    REJECTED = "rejected"  # a fix was proposed but failed a validation gate
+    NONE = "none"  # explanation only, by design or because the model proposed no fix
+
+
+class Edit(BaseModel):
+    """Replace one exact piece of text in one file."""
+
+    path: str
+    search: str
+    replace: str
+
+
+class Explanation(BaseModel):
+    """LLM-written teaching text for one finding, plus a validated fix if there is one."""
+
+    summary: str
+    what: str = Field(description="What is going on in this code.")
+    why: str = Field(description="Why an engineer cares.")
+    how_to_fix: str = Field(description="Steps a person can follow, even without the edits.")
+    behaviour_change: str = Field(
+        default="", description="What a user of the code would notice if the fix is applied."
+    )
+    edits: list[Edit] = Field(default_factory=list)
+    fix_status: FixStatus = FixStatus.NONE
+    fix_note: str = Field(default="", description="Why a fix was rejected, or what was checked.")
+    model: str = ""
+    cached: bool = False
+
+
+class ExplainStats(BaseModel):
+    """What one explanation run cost and achieved."""
+
+    provider: str
+    model: str
+    findings_explained: int = 0
+    api_calls: int = 0
+    retries: int = 0
+    cache_hits: int = 0
+    failures: int = 0
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+    estimated_cost_usd: float | None = None
+    fixes_verified: int = 0
+    fixes_rejected: int = 0
+    seconds: float = 0.0
 
 
 class ProjectStats(BaseModel):
@@ -84,6 +137,7 @@ class Report(BaseModel):
         default_factory=list, description="Checks that crashed; the rest of the report is valid."
     )
     graph: ProjectGraph | None = None
+    explain_stats: ExplainStats | None = None
 
 
 class NodeKind(StrEnum):
@@ -146,4 +200,5 @@ class ProjectGraph(BaseModel):
     )
 
 
+Finding.model_rebuild()
 Report.model_rebuild()

@@ -19,7 +19,11 @@ def analyze(root: Path, checks: Sequence[Check] | None = None) -> Report:
     A check that crashes is recorded in ``check_errors`` instead of failing the whole scan.
     No code from the project is executed.
     """
-    project = Project.load(root)
+    return analyze_project(Project.load(root), checks)
+
+
+def analyze_project(project: Project, checks: Sequence[Check] | None = None) -> Report:
+    """Like :func:`analyze`, for a project that is already loaded."""
     findings: list[Finding] = []
     errors: list[str] = []
     for check in checks if checks is not None else default_checks():

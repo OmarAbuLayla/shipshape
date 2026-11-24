@@ -177,3 +177,11 @@ def test_scores_and_grade() -> None:
     assert scores[Dimension.TESTING] == 95
     assert overall_grade(scores) == "B"
     assert overall_grade(dimension_scores([])) == "A"
+
+
+def test_group_shuffle_split_without_seed_is_random(make_project: MakeProject) -> None:
+    code = "from sklearn.model_selection import GroupShuffleSplit\nGroupShuffleSplit(n_splits=1)\n"
+
+    findings = MissingSeed().run(make_project({"a.py": code}))
+
+    assert len(findings) == 1

@@ -19,6 +19,8 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -154,16 +156,23 @@ def load_manifest(manifest: Path) -> list[Case]:
     return cases
 
 
-def _analyze_case(case: Case) -> Report:
-    """Scan the case, in a temporary copy with its setup files if it has any."""
+@contextmanager
+def case_root(case: Case) -> Iterator[Path]:
+    """The folder to scan: the case itself, or a temporary copy with its setup files."""
     if not case.setup_files:
-        return analyze(case.root)
+        yield case.root
+        return
     with tempfile.TemporaryDirectory(prefix="shipshape-eval-") as tmp:
         copy = Path(tmp) / case.root.name
         shutil.copytree(case.root, copy)
         for name, text in case.setup_files:
             (copy / name).write_text(text, encoding="utf-8")
-        return analyze(copy)
+        yield copy
+
+
+def _analyze_case(case: Case) -> Report:
+    with case_root(case) as root:
+        return analyze(root)
 
 
 def evaluate(cases: list[Case]) -> EvalResult:

@@ -42,6 +42,11 @@
   .chip.minor { background: var(--minor-soft); color: var(--minor); }
   .concept { font-size: 12px; color: var(--accent); }
   .where { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); }
+  pre.diff { font: 11.5px/1.5 ui-monospace, Consolas, monospace; background: #f7f8fb; border: 1px solid var(--line);
+             border-radius: 6px; padding: 8px; overflow-x: auto; white-space: pre; }
+  pre.diff .path { font-weight: bold; } pre.diff .del { color: var(--crit); } pre.diff .add { color: var(--ok); }
+  .headsup { background: var(--major-soft); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; }
+  .fixnote { font-size: 12px; color: var(--muted); } .fixnote.verified { color: var(--ok); } .fixnote.rejected { color: var(--crit); }
   #error { padding: 24px; display: none; }
   @media (max-width: 800px) { main { grid-template-columns: 1fr; grid-template-rows: 60vh auto; } aside { border-left: 0; border-top: 1px solid var(--line); } }
 </style>
@@ -94,8 +99,21 @@ function findingHtml(index, paths) {
   const locs = own.length ? own : f.locations;
   const shown = locs.slice(0, 6).map(where).join(", ") + (locs.length > 6 ? ` … (+${locs.length - 6})` : "");
   return `<div class="finding ${f.severity}"><span class="chip ${f.severity}">${f.severity}</span>
-    <b>${esc(f.title)}</b><p>${esc(f.message)}</p>
+    <b>${esc(f.title)}</b>${f.explanation ? explanationHtml(f.explanation) : `<p>${esc(f.message)}</p>`}
     <div class="concept">Concept: ${esc(f.concept)}</div><div class="where">${esc(shown)}</div></div>`;
+}
+
+function explanationHtml(x) {
+  const diff = x.fix_status === "verified"
+    ? x.edits.map((e) => `<pre class="diff"><span class="path">${esc(e.path)}</span>\n` +
+        e.search.split("\n").map((l) => `<span class="del">- ${esc(l)}</span>`).join("\n") + "\n" +
+        e.replace.split("\n").map((l) => `<span class="add">+ ${esc(l)}</span>`).join("\n") + "</pre>").join("")
+    : "";
+  return `<p><i>${esc(x.summary)}</i></p>
+    <p><b>What's going on.</b> ${esc(x.what)}</p>
+    <p><b>Why it matters.</b> ${esc(x.why)}</p>
+    <p><b>How to fix it.</b> ${esc(x.how_to_fix)}</p>
+    ${diff}${x.fix_status === "verified" && x.behaviour_change ? `<p class="headsup"><b>Heads-up:</b> ${esc(x.behaviour_change)}</p>` : ""}<p class="fixnote ${x.fix_status}">Fix: ${esc(x.fix_status)}${x.fix_note ? " · " + esc(x.fix_note) : ""}</p>`;
 }
 
 const SEV = {

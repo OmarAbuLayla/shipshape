@@ -36,6 +36,18 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 
 Grouped issues become one finding with many locations, so a project with 100 prints gets one finding, not 100. Thresholds are constants at the top of each check module.
 
+## Explanations and fixes (optional, needs an LLM key)
+
+```bash
+cp ../.env.example ../.env          # then add your DeepSeek key and pick a model
+shipshape llm-check --ping          # confirm the key and model work
+shipshape analyze path/to/project --explain   # explanations + verified fixes
+```
+
+With `--explain`, the most severe findings (15 by default, `--max-findings` to change) each get a plain-language explanation: what is going on in this code, why an engineer cares, and how to fix it. For checks where a small local edit is the right fix (hard-coded paths, missing seeds, leakage splits, swallowed exceptions, the lint bugs, ...), the model also proposes search-and-replace edits. A fix is only shown as **verified** if, applied in memory, the edits match exactly, the file still parses, the original finding is gone, and no other check reports anything new in the changed files. Otherwise the model gets one retry with the reason, and then the fix is dropped. Verified means "valid and removes the problem", not "behaves the same": Shipshape never runs code.
+
+What leaves your machine: the finding and the code around it (the enclosing function plus the top of the file). Credentials are replaced with `<REDACTED_n>` before sending, `.env` files are never sent, and the run prints which provider receives the code. With DeepSeek that is a server in China; don't use `--explain` on code you may not share. Answers are cached in `~/.shipshape/cache`, so unchanged code is never paid for twice, and every run ends with its API calls, tokens and estimated cost. `shipshape explain-eval corpus/fixtures` runs the real model over the whole corpus and reports fix rates per check (this costs money).
+
 ## Architecture map
 
 Every report includes a `graph`: files, notebooks and folders as nodes, internal imports as edges, test files linked to what they test, hard-coded data paths as external nodes, and missing pieces (no tests, no environment file) as dashed ghost nodes. Each node lists the findings pinned to it. Imports are resolved the way projects are actually run: `src/` layouts, packages, relative imports and "import the file next to me" all work, and when two files share a name the closest one wins.

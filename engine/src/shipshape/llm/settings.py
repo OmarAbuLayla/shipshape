@@ -21,6 +21,24 @@ SUPPORTED_PROVIDERS: dict[str, dict[str, str]] = {
 }
 
 
+# USD per 1M tokens at DeepSeek's peak rates (off-peak is half), from their pricing page
+# in November 2026: (input cache miss, input cache hit, output). Used only for estimates.
+PRICES_PER_MILLION: dict[str, tuple[float, float, float]] = {
+    "deepseek-flash": (0.30, 0.006, 1.20),
+    "deepseek-v4-pro": (1.32, 0.044, 3.96),
+}
+
+
+def estimate_cost(model: str, input_tokens: int, cached_input: int, output: int) -> float | None:
+    """Upper-bound cost in USD at peak prices, or ``None`` for a model without a price."""
+    prices = PRICES_PER_MILLION.get(model)
+    if prices is None:
+        return None
+    miss, hit, out = prices
+    uncached = max(input_tokens - cached_input, 0)
+    return (uncached * miss + cached_input * hit + output * out) / 1_000_000
+
+
 class SettingsError(ValueError):
     """The LLM configuration is missing or invalid."""
 

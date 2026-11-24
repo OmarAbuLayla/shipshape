@@ -6,7 +6,7 @@ Shipshape takes a vibe-coded project and shows you, on a map of your own code, w
 
 It is built first for people whose code gets judged by someone else, like researchers, students and domain experts, and it knows research-specific pitfalls such as data leakage across subjects, missing random seeds and unpinned environments.
 
-> **Status:** Phase 2 of 8 done. The engine runs 29 checks (18 custom + 11 curated ruff rules) on Python projects and notebooks, measured against a fixture corpus, and draws an architecture map of the project with findings pinned to it. No web app yet. See the [roadmap](docs/ROADMAP.md).
+> **Status:** Phase 3 of 8 built. The engine runs 29 checks (18 custom + 11 curated ruff rules) on Python projects and notebooks, measured against a fixture corpus, draws an architecture map, and (optionally, with an LLM key) explains findings in plain language with statically verified fixes. No web app yet. See the [roadmap](docs/ROADMAP.md).
 
 ## How it works
 
@@ -35,6 +35,7 @@ pre-commit install
 
 shipshape analyze path/to/your/project
 shipshape map path/to/your/project --html map.html   # interactive architecture map
+shipshape analyze path/to/your/project --explain     # plain-language explanations + fixes (needs a key, see below)
 shipshape checks          # what it looks for
 ```
 

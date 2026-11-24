@@ -212,8 +212,9 @@ def random_call(call: ast.Call) -> str | None:
         return name
     if last in {"train_test_split", "random_split"}:
         return name
-    if last in SHUFFLING_SPLITTERS and (
-        last.endswith("ShuffleSplit") or is_constant(_value(get_keyword(call, "shuffle")), True)
+    # Every *ShuffleSplit (GroupShuffleSplit too) shuffles; KFold only with shuffle=True.
+    if last.endswith("ShuffleSplit") or (
+        last in SHUFFLING_SPLITTERS and is_constant(_value(get_keyword(call, "shuffle")), True)
     ):
         return name
     if last == "DataLoader" and is_constant(_value(get_keyword(call, "shuffle")), True):

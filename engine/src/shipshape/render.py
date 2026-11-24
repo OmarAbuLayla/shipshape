@@ -9,7 +9,7 @@ from rich.table import Table
 from rich.text import Text
 
 from shipshape.evaluation import EvalResult
-from shipshape.models import Dimension, EdgeKind, Location, NodeKind, Report, Severity
+from shipshape.models import Dimension, EdgeKind, Edit, Location, NodeKind, Report, Severity
 
 SEVERITY_STYLE: dict[Severity, str] = {
     Severity.CRITICAL: "bold red",
@@ -74,8 +74,89 @@ def render_report(report: Report, console: Console) -> None:
             )
         console.print(table)
 
+    render_explanations(report, console)
     for error in report.check_errors:
         console.print(f"[yellow]Check failed:[/] {error}")
+
+
+FIX_STYLE = {"verified": "green", "rejected": "red", "none": "grey58"}
+
+
+def _diff(edit: Edit) -> Text:
+    text = Text(f"{edit.path}\n", style="bold")
+    for line in edit.search.splitlines():
+        text += Text(f"- {line}\n", style="red")
+    for line in edit.replace.splitlines():
+        text += Text(f"+ {line}\n", style="green")
+    return text
+
+
+def render_explanations(report: Report, console: Console) -> None:
+    """Print each explanation with its fix (as a diff) and what the run cost."""
+    explained = [f for f in report.findings if f.explanation is not None]
+    if not explained:
+        return
+    console.rule("[bold]Explanations")
+    for finding in explained:
+        explanation = finding.explanation
+        assert explanation is not None
+        status = explanation.fix_status.value
+        console.print(
+            f"\n[bold]{finding.title}[/]  [{FIX_STYLE[status]}]fix: {status}[/]"
+            + ("  [grey58](cached)[/]" if explanation.cached else "")
+        )
+        console.print(f"[italic]{explanation.summary}[/]")
+        console.print(f"[bold]What's going on.[/] {explanation.what}")
+        console.print(f"[bold]Why it matters.[/] {explanation.why}")
+        console.print(f"[bold]How to fix it.[/] {explanation.how_to_fix}")
+        if explanation.fix_status.value == "verified":
+            for edit in explanation.edits:
+                console.print(_diff(edit))
+            if explanation.behaviour_change:
+                console.print(f"[bold yellow]Heads-up:[/] {explanation.behaviour_change}")
+        if explanation.fix_note:
+            console.print(f"[grey58]{explanation.fix_note}[/]")
+        console.print(f"[cyan]Concept: {finding.concept}[/]")
+    stats = report.explain_stats
+    if stats is not None:
+        cost = (
+            f"about ${stats.estimated_cost_usd:.4f} at peak prices"
+            if stats.estimated_cost_usd is not None
+            else "cost unknown for this model"
+        )
+        console.rule()
+        console.print(
+            f"{stats.findings_explained} explained with {stats.model}: {stats.api_calls} API calls "
+            f"({stats.retries} retries, {stats.cache_hits} from cache, {stats.failures} failed), "
+            f"{stats.input_tokens:,} tokens in ({stats.cached_input_tokens:,} cached), "
+            f"{stats.output_tokens:,} out, {cost}, {stats.seconds:.0f}s. "
+            f"Fixes: {stats.fixes_verified} verified, {stats.fixes_rejected} rejected."
+        )
+
+
+def render_explain_eval(
+    per_check: dict[str, Counter[str]],
+    totals: Counter[str],
+    cost: float,
+    model: str,
+    console: Console,
+) -> None:
+    """Print how often explanations and fixes succeeded per check, and the total cost."""
+    table = Table(title=f"Explanations with {model}")
+    for column in ("Check", "Findings", "Explained", "Verified", "Rejected", "No fix"):
+        table.add_column(column, justify="left" if column == "Check" else "right")
+    for check_id, row in sorted(per_check.items()):
+        table.add_row(
+            check_id,
+            *(str(row[key]) for key in ("findings", "explained", "verified", "rejected", "none")),
+        )
+    console.print(table)
+    console.print(
+        f"{totals['api_calls']} API calls, {totals['retries']} retries, "
+        f"{totals['failures']} failures, {totals['cache_hits']} cache hits; "
+        f"{totals['input_tokens']:,} tokens in ({totals['cached_input_tokens']:,} cached), "
+        f"{totals['output_tokens']:,} out; about ${cost:.4f} at peak prices."
+    )
 
 
 def render_map_summary(report: Report, console: Console) -> None:

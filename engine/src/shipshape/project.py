@@ -6,7 +6,7 @@ import ast
 import fnmatch
 import warnings
 from bisect import bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
 from shipshape.models import Location
@@ -131,6 +131,18 @@ class Project:
                 names.add(path.stem)
                 names.update(path.parts[:-1])
         return names
+
+    def with_texts(self, texts: dict[str, str]) -> Project:
+        """A copy of the project in which the given files have new contents (in memory only)."""
+        sources = tuple(
+            SourceFile(
+                s.path, texts[s.path], _parse(texts[s.path]), count_code_lines(texts[s.path])
+            )
+            if s.path in texts
+            else s
+            for s in self.sources
+        )
+        return replace(self, sources=sources)
 
     @classmethod
     def load(cls, root: Path) -> Project:

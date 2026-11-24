@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import sys
+from collections import Counter, defaultdict
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -11,12 +14,21 @@ from rich.console import Console
 from rich.table import Table
 
 from shipshape import __version__
-from shipshape.analyzer import analyze as run_analysis
+from shipshape.analyzer import analyze_project
 from shipshape.checks import RULES, default_checks
-from shipshape.evaluation import evaluate, load_corpus, load_manifest
-from shipshape.llm.client import LLMError, ping
+from shipshape.evaluation import case_root, evaluate, load_corpus, load_manifest
+from shipshape.llm.cache import ExplanationCache
+from shipshape.llm.client import FatalLLMError, LLMError, OpenAICompatibleClient, ping
+from shipshape.llm.explain import DEFAULT_MAX_FINDINGS, explain_report
 from shipshape.llm.settings import SettingsError, load_settings
-from shipshape.render import render_evaluation, render_map_summary, render_report
+from shipshape.models import Report
+from shipshape.project import Project
+from shipshape.render import (
+    render_evaluation,
+    render_explain_eval,
+    render_map_summary,
+    render_report,
+)
 from shipshape.viewer import render_map_html
 
 app = typer.Typer(
@@ -26,11 +38,72 @@ app = typer.Typer(
 )
 
 
+@app.callback()
+def _safe_output() -> None:
+    """Never crash on characters the terminal's encoding lacks (Windows cp1252 pipes)."""
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="replace")
+
+
 class OutputFormat(StrEnum):
     """How ``analyze`` prints its report."""
 
     TEXT = "text"
     JSON = "json"
+
+
+ExplainOption = Annotated[
+    bool,
+    typer.Option(
+        "--explain",
+        help="Ask the configured LLM to explain findings and propose verified fixes (sends code).",
+    ),
+]
+MaxFindingsOption = Annotated[
+    int, typer.Option("--max-findings", min=1, help="Explain at most this many findings.")
+]
+NoCacheOption = Annotated[
+    bool, typer.Option("--no-cache", help="Ignore stored explanations and ask the LLM again.")
+]
+
+
+def _scan(path: Path, explain: bool, max_findings: int, no_cache: bool) -> Report:
+    """Analyse ``path`` and, if asked, add LLM explanations. Exits on user-facing errors."""
+    try:
+        project = Project.load(path)
+    except NotADirectoryError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    report = analyze_project(project)
+    if not explain or not report.findings:
+        return report
+    try:
+        settings = load_settings()
+        client = OpenAICompatibleClient(settings)
+    except SettingsError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    count = min(len(report.findings), max_findings)
+    typer.echo(
+        f"Sending code excerpts for {count} findings to {settings.provider} "
+        f"({settings.model} at {settings.base_url}). Credentials are redacted first.",
+        err=True,
+    )
+    try:
+        explain_report(
+            report,
+            project,
+            client,
+            provider=settings.provider,
+            max_findings=max_findings,
+            cache=ExplanationCache(enabled=not no_cache),
+            progress=lambda line: typer.echo(f"  {line}", err=True),
+        )
+    except FatalLLMError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    return report
 
 
 @app.command()
@@ -42,13 +115,12 @@ def analyze(
     output_format: Annotated[
         OutputFormat, typer.Option("--format", "-f", help="Terminal output format.")
     ] = OutputFormat.TEXT,
+    explain: ExplainOption = False,
+    max_findings: MaxFindingsOption = DEFAULT_MAX_FINDINGS,
+    no_cache: NoCacheOption = False,
 ) -> None:
     """Scan a project. Nothing in the project is executed."""
-    try:
-        report = run_analysis(path)
-    except NotADirectoryError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=2) from exc
+    report = _scan(path, explain, max_findings, no_cache)
     payload = report.model_dump_json(indent=2)
     if output is not None:
         output.write_text(payload + "\n", encoding="utf-8")
@@ -69,13 +141,12 @@ def draw_map(
     output: Annotated[
         Path | None, typer.Option("--output", "-o", help="Write the graph as JSON here.")
     ] = None,
+    explain: ExplainOption = False,
+    max_findings: MaxFindingsOption = DEFAULT_MAX_FINDINGS,
+    no_cache: NoCacheOption = False,
 ) -> None:
     """Build the architecture map: files, imports, missing pieces and where findings are."""
-    try:
-        report = run_analysis(path)
-    except NotADirectoryError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=2) from exc
+    report = _scan(path, explain, max_findings, no_cache)
     render_map_summary(report, Console())
     if output is not None and report.graph is not None:
         output.write_text(report.graph.model_dump_json(indent=2) + "\n", encoding="utf-8")
@@ -108,6 +179,64 @@ def evaluate_checks(
     render_evaluation(result, Console())
     if strict and not result.perfect:
         raise typer.Exit(code=1)
+
+
+@app.command("explain-eval")
+def explain_eval(
+    corpus: Annotated[Path, typer.Argument(help="Folder of projects with expected.yaml files.")],
+    use_cache: Annotated[
+        bool, typer.Option("--use-cache", help="Reuse stored explanations (cheaper, less honest).")
+    ] = False,
+) -> None:
+    """Explain every finding in the corpus with the real LLM and report fix rates and cost.
+
+    This calls the API for every finding (typically 30-50 calls) and costs money.
+    """
+    settings = load_settings()
+    try:
+        client = OpenAICompatibleClient(settings)
+    except SettingsError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    cache = ExplanationCache(enabled=use_cache)
+    per_check: dict[str, Counter[str]] = defaultdict(Counter)
+    totals: Counter[str] = Counter()
+    cost = 0.0
+    for case in load_corpus(corpus):
+        with case_root(case) as root:
+            project = Project.load(root)
+            report = analyze_project(project)
+            typer.echo(f"{case.name}: {len(report.findings)} findings", err=True)
+            try:
+                stats = explain_report(
+                    report,
+                    project,
+                    client,
+                    provider=settings.provider,
+                    max_findings=len(report.findings) or 1,
+                    cache=cache,
+                )
+            except FatalLLMError as exc:
+                typer.echo(f"Error: {exc}", err=True)
+                raise typer.Exit(code=1) from exc
+        for finding in report.findings:
+            row = per_check[finding.check_id]
+            row["findings"] += 1
+            if finding.explanation is not None:
+                row["explained"] += 1
+                row[finding.explanation.fix_status.value] += 1
+        for name in (
+            "api_calls",
+            "retries",
+            "failures",
+            "cache_hits",
+            "input_tokens",
+            "cached_input_tokens",
+            "output_tokens",
+        ):
+            totals[name] += getattr(stats, name)
+        cost += stats.estimated_cost_usd or 0.0
+    render_explain_eval(per_check, totals, cost, settings.model, Console())
 
 
 @app.command("checks")

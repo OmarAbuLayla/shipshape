@@ -183,3 +183,17 @@ class HardcodedSecret(Check):
         )
         first = hits[min(hits)]
         return [self.finding(message, locations, evidence=_redact(first))]
+
+
+def secret_values(tree: ast.AST) -> set[str]:
+    """Every literal in ``tree`` that looks like a credential, so it can be redacted."""
+    values = {
+        node.value
+        for name, node in _named_values(tree)
+        if isinstance(node.value, str)
+        and _looks_like_secret_name(name)
+        and _looks_like_secret_value(node.value)
+    }
+    for node in string_constants(tree):
+        values.update(match.group(0) for match in VENDOR_KEY.finditer(str(node.value)))
+    return values
