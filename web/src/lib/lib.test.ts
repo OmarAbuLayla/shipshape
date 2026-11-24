@@ -95,6 +95,68 @@ describe("layoutGraph", () => {
     const child = positions.get("pkg/a.py")!;
     expect(child.x + child.width).toBeLessThanOrEqual(group.width);
   });
+
+  it("routes edges in absolute coordinates, from box border to box border", async () => {
+    const view = buildViewGraph(graph, findings, { expanded: new Set(["pkg"]), showTests: true });
+
+    const { positions, routes } = await layoutGraph(view);
+
+    type Box = { x: number; y: number; width: number; height: number };
+    const absolute = (id: string): Box => {
+      const box = positions.get(id)!;
+      const parent = view.nodes.find((n) => n.id === id)!.parent;
+      const offset = parent ? absolute(parent) : { x: 0, y: 0 };
+      return { x: box.x + offset.x, y: box.y + offset.y, width: box.width, height: box.height };
+    };
+    const touches = (p: { x: number; y: number }, id: string) => {
+      const b = absolute(id);
+      return p.x >= b.x - 1 && p.x <= b.x + b.width + 1 && p.y >= b.y - 1 && p.y <= b.y + b.height + 1;
+    };
+    expect(routes.size).toBe(view.edges.length);
+    for (const edge of view.edges) {
+      const route = routes.get(edge.id)!;
+      expect(touches(route[0]!, edge.source)).toBe(true);
+      expect(touches(route[route.length - 1]!, edge.target)).toBe(true);
+    }
+  });
+});
+
+describe("folder tree", () => {
+  const deep: ProjectGraph = {
+    nodes: [
+      node({ id: "app", kind: "folder" }),
+      node({ id: "app/src", kind: "folder", parent: "app" }),
+      node({ id: "app/src/pkg", kind: "folder", parent: "app/src" }),
+      node({ id: "app/src/pkg/core.py", kind: "module", parent: "app/src/pkg" }),
+      node({ id: "app/src/pkg/io.py", kind: "module", parent: "app/src/pkg" }),
+      node({ id: "app/tests", kind: "folder", parent: "app" }),
+      node({ id: "app/tests/test_core.py", kind: "test", parent: "app/tests" }),
+      node({ id: "app/pyproject.toml", kind: "config", parent: "app" }),
+    ],
+    edges: [{ source: "app/tests/test_core.py", target: "app/src/pkg/core.py", kind: "test", names: [], line: 1 }],
+    project_findings: [],
+    unresolved_imports: [],
+  };
+
+  it("nests sub-folders inside an open folder and merges single-child chains", () => {
+    const view = buildViewGraph(deep, [], { expanded: new Set(["app"]), showTests: true });
+
+    const pkg = view.nodes.find((n) => n.id === folderId("app/src/pkg"))!;
+    expect(pkg.label).toBe("src/pkg/"); // app/src only holds pkg, so it is one step
+    expect(pkg.parent).toBe(groupId("app"));
+    expect(view.nodes.find((n) => n.id === "app/pyproject.toml")!.parent).toBe(groupId("app"));
+    expect(view.nodes.some((n) => n.id.includes("app/src") && n.id !== pkg.id)).toBe(false);
+    expect(view.edges).toEqual([
+      expect.objectContaining({ source: folderId("app/tests"), target: folderId("app/src/pkg") }),
+    ]);
+  });
+
+  it("counts every file below a closed folder", () => {
+    const view = buildViewGraph(deep, [], { expanded: new Set(), showTests: true });
+
+    expect(view.nodes.map((n) => n.id)).toEqual([folderId("app")]);
+    expect(view.nodes[0]!.members).toHaveLength(4);
+  });
 });
 
 describe("helpers", () => {

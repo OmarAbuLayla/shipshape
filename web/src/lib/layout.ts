@@ -2,7 +2,7 @@
 // pipeline). Expanded folders are laid out as nested containers. Both directions are tried and
 // the one that fills the map area best wins, so wide projects don't shrink to unreadable.
 
-import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
+import ELK, { type ElkExtendedEdge, type ElkNode } from "elkjs/lib/elk.bundled.js";
 
 import type { ViewGraph, ViewNode } from "./graphModel";
 
@@ -21,8 +21,15 @@ export interface Positioned {
   height: number;
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
 export interface Layout {
   positions: Map<string, Positioned>;
+  /** Each edge's route from ELK (absolute coordinates): start, bends, end. */
+  routes: Map<string, Point[]>;
   width: number;
   height: number;
   direction: Direction;
@@ -40,7 +47,16 @@ function elkGraph(view: ViewGraph, direction: Direction): ElkNode {
     elkNodes.set(
       node.id,
       node.kind === "group"
-        ? { id: node.id, children: [], layoutOptions: { "elk.padding": "[top=38,left=16,bottom=16,right=16]" } }
+        ? {
+            id: node.id,
+            children: [],
+            layoutOptions: {
+              "elk.padding": "[top=38,left=16,bottom=16,right=16]",
+              // Wide enough for the folder name and its "close" button.
+              "elk.nodeSize.constraints": "MINIMUM_SIZE",
+              "elk.nodeSize.minimum": `(${Math.round(node.label.length * CHAR_MONO + 90)}, 80)`,
+            },
+          }
         : { id: node.id, width: nodeWidth(node), height: NODE_HEIGHT },
     );
   }
@@ -60,6 +76,10 @@ function elkGraph(view: ViewGraph, direction: Direction): ElkNode {
       "elk.layered.spacing.nodeNodeBetweenLayers": direction === "RIGHT" ? "70" : "56",
       "elk.spacing.componentComponent": "40",
       "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.spacing.edgeNode": "14",
+      "elk.spacing.edgeEdge": "8",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "18",
     },
     children: roots,
     edges: view.edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
@@ -78,7 +98,26 @@ async function layoutIn(view: ViewGraph, direction: Direction): Promise<Layout> 
     }
   };
   walk(result.children);
-  return { positions, width: result.width ?? 0, height: result.height ?? 0, direction };
+  // ELK gives each edge's points relative to the container it was routed in (``container``);
+  // shift them by that container's absolute position so every route is in drawing coordinates.
+  const origin = new Map<string, Point>([["root", { x: 0, y: 0 }]]);
+  const place = (children: ElkNode[] | undefined, offset: Point) => {
+    for (const child of children ?? []) {
+      const at = { x: offset.x + (child.x ?? 0), y: offset.y + (child.y ?? 0) };
+      origin.set(child.id, at);
+      place(child.children, at);
+    }
+  };
+  place(result.children, { x: 0, y: 0 });
+  const routes = new Map<string, Point[]>();
+  for (const edge of (result.edges ?? []) as (ElkExtendedEdge & { container?: string })[]) {
+    const section = edge.sections?.[0];
+    if (!section) continue;
+    const shift = origin.get(edge.container ?? "root") ?? { x: 0, y: 0 };
+    const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
+    routes.set(edge.id, points.map((p) => ({ x: p.x + shift.x, y: p.y + shift.y })));
+  }
+  return { positions, routes, width: result.width ?? 0, height: result.height ?? 0, direction };
 }
 
 /** How large the drawing appears when fitted into a ``width`` x ``height`` area. */

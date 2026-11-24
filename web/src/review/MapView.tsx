@@ -1,6 +1,7 @@
 import {
   Background,
   BackgroundVariant,
+  BaseEdge,
   Controls,
   Handle,
   MarkerType,
@@ -9,13 +10,14 @@ import {
   ReactFlowProvider,
   useReactFlow,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import type { ViewGraph, ViewNode } from "../lib/graphModel";
-import { layoutGraph, NODE_HEIGHT, nodeWidth, type Layout } from "../lib/layout";
+import { layoutGraph, NODE_HEIGHT, nodeWidth, type Layout, type Point } from "../lib/layout";
 
 interface BoxData extends Record<string, unknown> {
   view: ViewNode;
@@ -77,6 +79,78 @@ const GroupNode = memo(function GroupNode({ data }: NodeProps<Node<BoxData>>) {
 
 const nodeTypes = { box: BoxNode, group: GroupNode };
 
+interface RoutedData extends Record<string, unknown> {
+  points: Point[] | null; // ELK's route; null falls back to a straight line
+  count: number;
+}
+
+/** An SVG path through ``points`` with small rounded corners at each bend. */
+export function roundedPath(points: Point[], radius = 7): string {
+  const [first, ...rest] = points;
+  if (!first) return "";
+  let path = `M ${first.x} ${first.y}`;
+  for (let i = 0; i < rest.length; i++) {
+    const corner = rest[i]!;
+    const next = rest[i + 1];
+    const prev = i === 0 ? first : rest[i - 1]!;
+    if (!next) {
+      path += ` L ${corner.x} ${corner.y}`;
+      break;
+    }
+    const r = Math.min(radius, Math.hypot(corner.x - prev.x, corner.y - prev.y) / 2, Math.hypot(next.x - corner.x, next.y - corner.y) / 2);
+    const towards = (from: Point, to: Point, d: number) => {
+      const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+      return { x: from.x + ((to.x - from.x) / length) * d, y: from.y + ((to.y - from.y) / length) * d };
+    };
+    const before = towards(corner, prev, r);
+    const after = towards(corner, next, r);
+    path += ` L ${before.x} ${before.y} Q ${corner.x} ${corner.y} ${after.x} ${after.y}`;
+  }
+  return path;
+}
+
+/** Middle of the route's longest straight piece: the calmest place for a count label. */
+export function labelPoint(points: Point[]): Point {
+  let best = { x: points[0]?.x ?? 0, y: points[0]?.y ?? 0 };
+  let longest = -1;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!;
+    const b = points[i]!;
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    if (length > longest) {
+      longest = length;
+      best = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+  }
+  return best;
+}
+
+const RoutedEdge = memo(function RoutedEdge(props: EdgeProps<Edge<RoutedData>>) {
+  const { sourceX, sourceY, targetX, targetY, data, style, markerEnd } = props;
+  const points = data?.points ?? [
+    { x: sourceX, y: sourceY },
+    { x: targetX, y: targetY },
+  ];
+  const label = labelPoint(points);
+  return (
+    <BaseEdge
+      path={roundedPath(points)}
+      style={style}
+      markerEnd={markerEnd}
+      label={data && data.count > 1 ? String(data.count) : undefined}
+      labelX={label.x}
+      labelY={label.y}
+      labelBgPadding={[3, 1]}
+      labelBgBorderRadius={3}
+    />
+  );
+});
+
+const edgeTypes = { routed: RoutedEdge };
+
+/** Above this many lines the map draws them faintly and brings out the lines of one box. */
+const BUSY_EDGES = 30;
+
 const EDGE_COLOR = { import: "var(--faint)", test: "var(--ok)", reads: "var(--major)" } as const;
 
 /** Ask the map to pan to a box; ``request`` changes on every click so repeats still work. */
@@ -98,6 +172,7 @@ function MapInner({ view, highlighted, selectedBox, onSelectBox, onToggleFolder,
   area: RefObject<HTMLDivElement>;
 }) {
   const [layout, setLayout] = useState<Layout | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
   const flow = useReactFlow();
 
   useEffect(() => {
@@ -162,7 +237,8 @@ function MapInner({ view, highlighted, selectedBox, onSelectBox, onToggleFolder,
         extent: v.parent ? ("parent" as const) : undefined,
         draggable: false,
         selectable: false,
-        zIndex: isGroup ? 0 : 1,
+        // Open folders at the back, then lines, then boxes on top, so lines never cover names.
+        zIndex: isGroup ? 0 : 3,
         style: isGroup ? { width: p.width, height: p.height } : undefined,
         data: {
           view: v,
@@ -176,30 +252,40 @@ function MapInner({ view, highlighted, selectedBox, onSelectBox, onToggleFolder,
     });
   }, [layout, view, highlighted, selectedBox, onToggleFolder]);
 
-  const edges = useMemo<Edge[]>(
-    () =>
-      view.edges.map((e) => ({
+  const edges = useMemo<Edge<RoutedData>[]>(() => {
+    // Lines of the hovered or selected box (or of the selected issue's boxes) stand out; in
+    // busy maps every other line is faint, so the structure stays visible without the tangle.
+    const focus = new Set(highlighted);
+    for (const id of [hovered, selectedBox]) if (id) focus.add(id);
+    const busy = view.edges.length > BUSY_EDGES;
+    return view.edges.map((e) => {
+      const inFocus = focus.has(e.source) || focus.has(e.target);
+      const faint = focus.size > 0 ? !inFocus : busy;
+      return {
         id: e.id,
+        type: "routed",
         source: e.source,
         target: e.target,
-        label: e.count > 1 ? String(e.count) : undefined,
+        data: { points: layout?.routes.get(e.id) ?? null, count: faint && busy ? 1 : e.count },
         style: {
           stroke: EDGE_COLOR[e.kind],
           strokeWidth: 1.2 + Math.min(Math.log2(e.count), 3) * 0.8,
           strokeDasharray: e.kind === "test" ? "5 4" : e.kind === "reads" ? "2 4" : undefined,
-          opacity: highlighted.size && !(highlighted.has(e.source) || highlighted.has(e.target)) ? 0.25 : 0.85,
+          opacity: faint ? (busy ? 0.18 : 0.25) : 0.9,
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR[e.kind], width: 16, height: 16 },
-        zIndex: 2,
-      })),
-    [view, highlighted],
-  );
+        // Fixed size in pixels: thick lines show weight without giant arrowheads.
+        markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR[e.kind], width: 12, height: 12, markerUnits: "userSpaceOnUse" },
+        zIndex: inFocus ? 2.5 : 2,
+      };
+    });
+  }, [view, highlighted, hovered, selectedBox, layout]);
 
   return (
     <ReactFlow
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
       onNodeClick={(_, node) => node.type === "box" && onSelectBox(node.id)}
       onNodeDoubleClick={(_, node) => {
         const folder = (node.data as BoxData).view.folder;
@@ -207,6 +293,8 @@ function MapInner({ view, highlighted, selectedBox, onSelectBox, onToggleFolder,
       }}
       zoomOnDoubleClick={false}
       onPaneClick={() => onSelectBox(null)}
+      onNodeMouseEnter={(_, node) => node.type === "box" && setHovered(node.id)}
+      onNodeMouseLeave={() => setHovered(null)}
       nodesConnectable={false}
       minZoom={0.15}
       maxZoom={2}
