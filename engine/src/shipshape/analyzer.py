@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from shipshape import __version__
+from shipshape.blocks import file_info
 from shipshape.checks import Check, default_checks
 from shipshape.graph import build_graph
 from shipshape.models import SEVERITY_ORDER, Exclusions, Finding, ProjectStats, Report
@@ -44,6 +45,11 @@ def analyze_project(project: Project, checks: Sequence[Check] | None = None) -> 
         graph = build_graph(project, findings)
     except Exception as exc:  # the report is still useful without a map
         errors.append(f"graph: {type(exc).__name__}: {exc}")
+    files = {}
+    try:
+        files = file_info(project, findings)
+    except Exception as exc:  # blocks are a convenience; the findings stand without them
+        errors.append(f"blocks: {type(exc).__name__}: {exc}")
     return Report(
         engine_version=__version__,
         project_name=project.name,
@@ -58,6 +64,7 @@ def analyze_project(project: Project, checks: Sequence[Check] | None = None) -> 
         grade=overall_grade(scores),
         check_errors=errors,
         graph=graph,
+        files=files,
         exclusions=Exclusions(
             ignore_files=list(project.ignore.files),
             patterns=[p.describe() for p in project.ignore.patterns],

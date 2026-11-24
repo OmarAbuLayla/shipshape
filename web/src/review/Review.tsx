@@ -4,11 +4,14 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 
 import { exclusionLines, formatWhen, plural, scoreColor } from "../lib/format";
+import { absoluteLine, blockAtLine } from "../lib/blockModel";
 import { boxesForFinding, buildViewGraph, defaultExpanded, findingsOfBox } from "../lib/graphModel";
-import { DIMENSIONS, type Dimension, type Report, type ScanSummary } from "../lib/types";
+import { DIMENSIONS, type Dimension, type Location, type Report, type ScanSummary } from "../lib/types";
+import type { LineFocus } from "./CodeView";
 import { DetailPanel, hasVerifiedFix } from "./DetailPanel";
 import { IssueList } from "./IssueList";
 import { ExportMenu } from "./ExportMenu";
+import { FileView } from "./FileView";
 import { MapView, type FocusRequest } from "./MapView";
 
 const SHORT_LABEL: Record<Dimension, string> = {
@@ -28,6 +31,12 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
   const [selectedBox, setSelectedBox] = useState<string | null>(null);
   const [dimension, setDimension] = useState<Dimension | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
+  // Zoomed into one file: its blocks and code replace the map.
+  const [openFile, setOpenFile] = useState<string | null>(null);
+  const [blockId, setBlockId] = useState<string | null>(null);
+  const [codeFocus, setCodeFocus] = useState<LineFocus | null>(null);
+  const fileInfo = openFile ? report.files?.[openFile] : undefined;
+  const block = (blockId && fileInfo?.blocks.find((b) => b.id === blockId)) || null;
   const fixable = useMemo(
     () => report.findings.flatMap((f, i) => (hasVerifiedFix(f) ? [i] : [])),
     [report.findings],
@@ -80,10 +89,13 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
     () => (view && selected !== null ? boxesForFinding(view, selected) : new Set<string>()),
     [view, selected],
   );
-  const visible = useMemo(
-    () => (view && selectedBox ? findingsOfBox(view, selectedBox) : report.findings.map((_, i) => i)),
-    [view, selectedBox, report.findings],
-  );
+  const visible = useMemo(() => {
+    if (openFile) {
+      if (block) return block.findings;
+      return report.findings.flatMap((f, i) => (f.locations.some((l) => l.path === openFile) ? [i] : []));
+    }
+    return view && selectedBox ? findingsOfBox(view, selectedBox) : report.findings.map((_, i) => i);
+  }, [view, selectedBox, report.findings, openFile, block]);
   const box = view && selectedBox ? (view.nodes.find((n) => n.id === selectedBox) ?? null) : null;
 
   const selectBox = (id: string | null) => {
@@ -93,6 +105,48 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
   const locate = (path: string) => {
     const unit = view?.unitOf.get(path);
     if (unit) setFocus((current) => ({ id: unit, request: (current?.request ?? 0) + 1 }));
+  };
+
+  /** Scroll the code to ``line`` and select the block holding it (module code: none). */
+  const showLine = (path: string, line: number) => {
+    const info = report.files?.[path];
+    const holder = info ? blockAtLine(info, line) : null;
+    setBlockId(holder && holder.kind !== "module" ? holder.id : null);
+    setCodeFocus((current) => ({ line, request: (current?.request ?? 0) + 1 }));
+  };
+  /** Zoom into a file (at a line, if given); files without blocks are shown on the map instead. */
+  const openCode = (path: string, line: number | null = null) => {
+    if (!report.files?.[path]) {
+      locate(path);
+      return;
+    }
+    setOpenFile(path);
+    setSelectedBox(null);
+    if (line !== null) showLine(path, line);
+    else {
+      setBlockId(null);
+      setCodeFocus(null);
+    }
+  };
+  const openLocation = (location: Location) => openCode(location.path, absoluteLine(location, report.files?.[location.path]));
+  const closeFile = () => {
+    setOpenFile(null);
+    setBlockId(null);
+    setCodeFocus(null);
+  };
+  const selectBlock = (id: string | null) => {
+    setBlockId(id);
+    if (!id) return;
+    setSelected(null);
+    const chosen = fileInfo?.blocks.find((b) => b.id === id);
+    if (chosen) setCodeFocus((current) => ({ line: chosen.start_line, request: (current?.request ?? 0) + 1 }));
+  };
+  const selectFinding = (index: number) => {
+    setSelected(index);
+    if (!openFile) return;
+    const here = report.findings[index]?.locations.find((l) => l.path === openFile);
+    const line = here ? absoluteLine(here, fileInfo) : null;
+    if (line !== null) showLine(openFile, line);
   };
 
   const s = report.stats;
@@ -155,19 +209,32 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
           findings={report.findings}
           visible={visible}
           selected={selected}
-          onSelect={(i) => setSelected(i)}
+          onSelect={selectFinding}
           dimension={dimension}
           onDimension={setDimension}
-          boxLabel={box ? box.label : null}
-          onClearBox={() => setSelectedBox(null)}
+          boxLabel={openFile ? (block ? block.name : (openFile.split("/").pop() ?? openFile)) : box ? box.label : null}
+          onClearBox={() => (openFile ? (block ? setBlockId(null) : closeFile()) : setSelectedBox(null))}
         />
-        {view ? (
+        {openFile ? (
+          <FileView
+            report={report}
+            scanId={scan.id}
+            path={openFile}
+            block={block}
+            selectedFinding={selected}
+            focus={codeFocus}
+            onSelectBlock={selectBlock}
+            onSelectFinding={selectFinding}
+            onClose={closeFile}
+          />
+        ) : view ? (
           <MapView
             view={view}
             highlighted={highlighted}
             selectedBox={selectedBox}
             onSelectBox={selectBox}
             onToggleFolder={toggleFolder}
+            onOpenBox={(id) => openCode(id)}
             focus={focus}
           />
         ) : (
@@ -176,13 +243,14 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
         <DetailPanel
           report={report}
           selected={selected}
-          box={box}
+          box={openFile ? null : box}
+          block={block}
           chosen={chosen}
           onToggleFix={toggleFix}
-          onSelect={(i) => {
-            setSelected(i);
-          }}
-          onLocate={locate}
+          onSelect={selectFinding}
+          onOpenLocation={openLocation}
+          onOpenFile={(path) => openCode(path)}
+          onSelectBlock={selectBlock}
         />
       </div>
     </div>

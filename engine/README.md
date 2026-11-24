@@ -73,6 +73,8 @@ The same limit as before applies: Shipshape never runs code, so a verified fix i
 
 Every report includes a `graph`: files, notebooks and folders as nodes, internal imports as edges, test files linked to what they test, hard-coded data paths as external nodes, and missing pieces (no tests, no environment file) as dashed ghost nodes. Each node lists the findings pinned to it. Imports are resolved the way projects are actually run: `src/` layouts, packages, relative imports and "import the file next to me" all work, and when two files share a name the closest one wins.
 
+Below the map, every report has `files`: each scanned file's blocks (top-level functions, classes and their methods, notebook cells, and the module-level code around them) with their line ranges, size and complexity, the findings that fall inside them, and which blocks of the same file call each other. Calls are matched by name inside one file, so they are a guide, not a complete call graph. Each file also carries a fingerprint of the scanned text, so a viewer can tell when the file changed since the scan.
+
 `shipshape map --html map.html` writes a standalone page that draws it. Large projects open in a folder overview (one box per folder, arrows labelled with import counts), and "All files" shows every module. The page loads its layout library from a CDN, so it needs an internet connection.
 
 ## Measuring the checks

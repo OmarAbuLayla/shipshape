@@ -1,4 +1,4 @@
-// Mirrors engine/src/shipshape/models.py (report schema 0.5) and the API's scan summary.
+// Mirrors engine/src/shipshape/models.py (report schema 0.6) and the API's scan summary.
 
 export type Severity = "critical" | "major" | "minor";
 export type Dimension =
@@ -119,6 +119,39 @@ export interface Exclusions {
   suppressed: Suppression[];
 }
 
+export type BlockKind = "function" | "method" | "class" | "cell" | "module";
+
+/** A function, class, method or notebook cell, anchored to lines of the scanned text. */
+export interface Block {
+  id: string;
+  path: string;
+  name: string;
+  kind: BlockKind;
+  parent: string | null;
+  start_line: number;
+  end_line: number;
+  lines_of_code: number;
+  complexity: number;
+  has_docstring: boolean;
+  calls: string[];
+  findings: number[];
+}
+
+export interface FileInfo {
+  sha256: string;
+  lines: number;
+  cell_starts: number[]; // notebooks: first scanned line of each code cell
+  blocks: Block[];
+}
+
+/** GET /api/scans/{id}/source */
+export interface SourceText {
+  path: string;
+  text: string;
+  cell_starts: number[];
+  changed: boolean;
+}
+
 export interface Report {
   schema_version: string;
   engine_version: string;
@@ -133,6 +166,8 @@ export interface Report {
   explain_stats: ExplainStats | null;
   /** Missing in reports saved before schema 0.5. */
   exclusions?: Exclusions;
+  /** Missing in reports saved before schema 0.6. */
+  files?: Record<string, FileInfo>;
 }
 
 export interface FixOutcome {

@@ -4,7 +4,8 @@ import { formatLocation, splitSteps, worstSeverity } from "./format";
 import { boxesForFinding, buildViewGraph, defaultExpanded, findingsOfBox, folderId, groupId } from "./graphModel";
 import { highlightPython } from "./highlight";
 import { layoutGraph } from "./layout";
-import type { Finding, GraphNode, ProjectGraph } from "./types";
+import { absoluteLine, blockAtLine, buildBlockView, flaggedLines } from "./blockModel";
+import type { Block, FileInfo, Finding, GraphNode, ProjectGraph } from "./types";
 
 function node(partial: Partial<GraphNode> & Pick<GraphNode, "id" | "kind">): GraphNode {
   return {
@@ -178,5 +179,47 @@ describe("helpers", () => {
     expect(formatLocation({ path: "a.py", start_line: 3, end_line: null, cell: 2 })).toBe("a.py [cell 2]:3");
     expect(formatLocation({ path: ".", start_line: null, end_line: null, cell: null })).toBe("whole project");
     expect(worstSeverity(["minor", null, "major"])).toBe("major");
+  });
+});
+
+describe("block model", () => {
+  const block = (partial: Partial<Block> & Pick<Block, "id" | "name" | "kind">): Block => ({
+    path: "m.py", parent: null, start_line: 1, end_line: 1, lines_of_code: 1, complexity: 1,
+    has_docstring: false, calls: [], findings: [], ...partial,
+  });
+  const info: FileInfo = {
+    sha256: "x",
+    lines: 30,
+    cell_starts: [],
+    blocks: [
+      block({ id: "m.py::Model", name: "Model", kind: "class", start_line: 1, end_line: 12 }),
+      block({ id: "m.py::Model.fit", name: "Model.fit", kind: "method", parent: "m.py::Model", start_line: 3, end_line: 8, calls: ["m.py::Model", "m.py::helper"], findings: [0] }),
+      block({ id: "m.py::helper", name: "helper", kind: "function", start_line: 14, end_line: 20 }),
+      block({ id: "m.py::module code", name: "module code", kind: "module", start_line: 1, end_line: 30, lines_of_code: 0 }),
+    ],
+  };
+  const fileFindings = [finding("major", "m.py")];
+
+  it("draws classes as containers, skips empty module code and nesting edges", () => {
+    const view = buildBlockView(info, fileFindings);
+
+    expect(view.nodes.map((n) => n.id)).toEqual(["m.py::Model", "m.py::Model.fit", "m.py::helper"]);
+    expect(view.nodes[0]!.kind).toBe("group");
+    expect(view.nodes[1]).toMatchObject({ label: "fit", parent: "m.py::Model", severity: "major" });
+    expect(view.edges.map((e) => [e.source, e.target])).toEqual([["m.py::Model.fit", "m.py::helper"]]);
+  });
+
+  it("finds the innermost block of a line", () => {
+    expect(blockAtLine(info, 5)!.id).toBe("m.py::Model.fit");
+    expect(blockAtLine(info, 13)!.kind).toBe("module");
+  });
+
+  it("translates notebook cell lines and collects flagged lines", () => {
+    const nb: FileInfo = { ...info, cell_starts: [1, 6, 10] };
+    const location = { path: "nb.ipynb", start_line: 2, end_line: null, cell: 3 };
+
+    expect(absoluteLine(location, nb)).toBe(11);
+    const flagged = flaggedLines([{ ...fileFindings[0]!, locations: [location] }], "nb.ipynb", nb);
+    expect([...flagged.entries()]).toEqual([[11, [0]]]);
   });
 });

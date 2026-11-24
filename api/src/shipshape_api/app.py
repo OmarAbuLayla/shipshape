@@ -22,7 +22,7 @@ from shipshape.llm.explain import DEFAULT_MAX_FINDINGS
 from shipshape.llm.settings import SettingsError, load_settings
 from shipshape.models import Report
 
-from shipshape_api import __version__, fixes
+from shipshape_api import __version__, fixes, source
 from shipshape_api.fixes import FixRequest, FixRunResponse
 from shipshape_api.jobs import ClientFactory, ScanJob, ScanRunner, default_client_factory
 from shipshape_api.store import ScanStore, ScanSummary
@@ -194,6 +194,22 @@ def create_app(
             media_type=EXPORT_TYPES[format],
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+    @app.get("/api/scans/{scan_id}/source")
+    def get_source(scan_id: str, path: str) -> source.SourceFile:
+        """The scanned text of one file of this scan, for the code view."""
+        summary = store.get(scan_id)
+        if summary is None:
+            raise HTTPException(404, "No such scan.")
+        raw = store.report(scan_id)
+        if raw is None:
+            raise HTTPException(409, "The report is not ready.")
+        try:
+            return source.load(
+                data_dir, summary, store.root(scan_id), Report.model_validate_json(raw), path
+            )
+        except source.SourceUnavailableError as exc:
+            raise HTTPException(404, str(exc)) from exc
 
     @app.post("/api/scans/{scan_id}/fixes")
     def apply_fixes(scan_id: str, request: FixRequest) -> FixRunResponse:

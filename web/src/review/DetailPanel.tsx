@@ -1,7 +1,7 @@
 import { Alert, Book, Check } from "../components/icons";
 import { capitalize, exclusionLines, formatLocation, plural, shortPath, splitSteps } from "../lib/format";
 import type { ViewNode } from "../lib/graphModel";
-import type { Finding, Report } from "../lib/types";
+import type { Block, Finding, Location, Report } from "../lib/types";
 import { Diff } from "./Diff";
 
 interface Props {
@@ -9,7 +9,10 @@ interface Props {
   selected: number | null;
   box: ViewNode | null;
   onSelect: (index: number) => void;
-  onLocate: (path: string) => void;
+  onOpenLocation: (location: Location) => void;
+  onOpenFile: (path: string) => void;
+  onSelectBlock: (id: string) => void;
+  block: Block | null;
   chosen: Set<number>;
   onToggleFix: (index: number) => void;
 }
@@ -19,7 +22,7 @@ export function hasVerifiedFix(finding: Finding): boolean {
   return finding.explanation?.fix_status === "verified" && finding.explanation.edits.length > 0;
 }
 
-export function DetailPanel({ report, selected, box, onSelect, onLocate, chosen, onToggleFix }: Props) {
+export function DetailPanel({ report, selected, box, block, onSelect, onOpenLocation, onOpenFile, onSelectBlock, chosen, onToggleFix }: Props) {
   const finding = selected === null ? null : report.findings[selected];
   return (
     <aside className="col detail" aria-label="Details">
@@ -27,12 +30,14 @@ export function DetailPanel({ report, selected, box, onSelect, onLocate, chosen,
         <FindingDetail
           finding={finding}
           number={(selected ?? 0) + 1}
-          onLocate={onLocate}
+          onLocate={onOpenLocation}
           included={chosen.has(selected ?? -1)}
           onToggleFix={() => selected !== null && onToggleFix(selected)}
         />
+      ) : block ? (
+        <BlockDetail block={block} report={report} onSelect={onSelect} onSelectBlock={onSelectBlock} />
       ) : box ? (
-        <BoxDetail box={box} report={report} onSelect={onSelect} />
+        <BoxDetail box={box} report={report} onSelect={onSelect} onOpenFile={onOpenFile} />
       ) : (
         <ProjectDetail report={report} onSelect={onSelect} />
       )}
@@ -55,7 +60,7 @@ function Paragraphs({ text }: { text: string }) {
 interface FindingDetailProps {
   finding: Finding;
   number: number;
-  onLocate: (p: string) => void;
+  onLocate: (location: Location) => void;
   included: boolean;
   onToggleFix: () => void;
 }
@@ -140,7 +145,7 @@ function FindingDetail({ finding, number, onLocate, included, onToggleFix }: Fin
         <h4>Where</h4>
         <div className="locations">
           {finding.locations.slice(0, 12).map((location, i) => (
-            <button key={i} onClick={() => onLocate(location.path)} title={`${formatLocation(location)} · show on the map`}>
+            <button key={i} onClick={() => onLocate(location)} title={`${formatLocation(location)} · show the code`}>
               {formatLocation({ ...location, path: shortPath(location.path) })}
             </button>
           ))}
@@ -161,7 +166,14 @@ function FindingDetail({ finding, number, onLocate, included, onToggleFix }: Fin
   );
 }
 
-function BoxDetail({ box, report, onSelect }: { box: ViewNode; report: Report; onSelect: (i: number) => void }) {
+interface BoxDetailProps {
+  box: ViewNode;
+  report: Report;
+  onSelect: (i: number) => void;
+  onOpenFile: (path: string) => void;
+}
+
+function BoxDetail({ box, report, onSelect, onOpenFile }: BoxDetailProps) {
   const node = report.graph?.nodes.find((n) => n.id === box.members[0]);
   const isFile = box.members.length === 1 && node && box.kind !== "folder" && box.kind !== "group";
   return (
@@ -181,6 +193,11 @@ function BoxDetail({ box, report, onSelect }: { box: ViewNode; report: Report; o
       )}
       {isFile && node && node.third_party.length > 0 && (
         <p className="muted" style={{ fontSize: 13.5 }}>Uses {node.third_party.join(", ")}.</p>
+      )}
+      {isFile && node && report.files?.[node.id] && (
+        <button className="btn small" style={{ justifySelf: "start" }} onClick={() => onOpenFile(node.id)}>
+          Open the code ›
+        </button>
       )}
       <FindingLinks indices={box.findings} report={report} onSelect={onSelect} empty="No findings in this part of the code." />
     </>
@@ -263,5 +280,51 @@ function ExcludedNote({ report }: { report: Report }) {
       </ul>
       <p className="hint">Set by the project itself, in .shipshapeignore files and inline comments.</p>
     </div>
+  );
+}
+
+const BLOCK_KIND = { function: "Function", method: "Method", class: "Class", cell: "Notebook cell", module: "Module code" } as const;
+
+/** One function, class, method or cell: size, calls both ways, and its findings. */
+function BlockDetail({ block, report, onSelect, onSelectBlock }: {
+  block: Block;
+  report: Report;
+  onSelect: (i: number) => void;
+  onSelectBlock: (id: string) => void;
+}) {
+  const siblings = report.files?.[block.path]?.blocks ?? [];
+  const calledBy = siblings.filter((b) => b.calls.includes(block.id));
+  const calls = siblings.filter((b) => block.calls.includes(b.id));
+  const links = (items: Block[], empty: string) =>
+    items.length === 0 ? (
+      <span className="faint">{empty}</span>
+    ) : (
+      items.map((b) => (
+        <button key={b.id} className="block-link mono" onClick={() => onSelectBlock(b.id)}>{b.name}</button>
+      ))
+    );
+  return (
+    <>
+      <div className="detail-head">
+        <p className="eyebrow">{BLOCK_KIND[block.kind]}</p>
+        <h2 className="mono" style={{ fontSize: 17, wordBreak: "break-all" }}>{block.name}</h2>
+        <p className="faint mono" style={{ fontSize: 12.5 }}>{shortPath(block.path)} · lines {block.start_line}–{block.end_line}</p>
+      </div>
+      <div className="stat-grid">
+        <div className="stat"><b>{block.lines_of_code}</b><span>lines of code</span></div>
+        <div className="stat"><b>{block.complexity || "–"}</b><span>complexity</span></div>
+        <div className="stat"><b>{block.kind === "cell" || block.kind === "module" ? "–" : block.has_docstring ? "yes" : "no"}</b><span>docstring</span></div>
+      </div>
+      <div className="sec">
+        <h4>Calls</h4>
+        <div className="block-links">{links(calls, "Nothing else in this file.")}</div>
+      </div>
+      <div className="sec">
+        <h4>Called by</h4>
+        <div className="block-links">{links(calledBy, "Nothing in this file.")}</div>
+      </div>
+      <p className="faint" style={{ fontSize: 12 }}>Calls are matched by name inside this file; calls from other files are not shown.</p>
+      <FindingLinks indices={block.findings} report={report} onSelect={onSelect} empty="No findings in this block." />
+    </>
   );
 }

@@ -25,6 +25,28 @@ def count_code_lines(text: str) -> int:
     )
 
 
+def read_source(path: Path) -> tuple[str, tuple[int, ...]] | None:
+    """The text Shipshape analyses for a ``.py`` file or notebook, and each cell's first line.
+
+    ``None`` for other files, files that are too large or unreadable, and broken notebooks.
+    Notebooks become their code cells joined in order (magics blanked).
+    """
+    if path.suffix not in {".py", ".ipynb"}:
+        return None
+    try:
+        if path.stat().st_size > MAX_SOURCE_BYTES:
+            return None
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if path.suffix == ".py":
+        return raw, ()
+    try:
+        return notebook_to_source(raw)
+    except NotebookError:
+        return None
+
+
 def _parse(text: str) -> ast.Module | None:
     try:
         with warnings.catch_warnings():
@@ -166,21 +188,10 @@ class Project:
                 excluded.append(rel)
                 continue
             files.append(rel)
-            if path.suffix not in {".py", ".ipynb"}:
+            loaded = read_source(path)
+            if loaded is None:
                 continue
-            try:
-                if path.stat().st_size > MAX_SOURCE_BYTES:
-                    continue
-                raw = path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            if path.suffix == ".ipynb":
-                try:
-                    text, starts = notebook_to_source(raw)
-                except NotebookError:
-                    continue
-            else:
-                text, starts = raw, ()
+            text, starts = loaded
             sources.append(SourceFile(rel, text, _parse(text), count_code_lines(text), starts))
         return cls(
             root=root,

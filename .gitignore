@@ -34,3 +34,7 @@ reports/
 .DS_Store
 Thumbs.db
 *.tsbuildinfo
+
+# Local artefacts: brag launch-video output and the source bundle made for it
+brag-output*/
+/shipshape-brag-src.zip

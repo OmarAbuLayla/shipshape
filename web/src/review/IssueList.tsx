@@ -37,7 +37,7 @@ export function IssueList({ findings, visible, selected, onSelect, dimension, on
         {boxLabel && (
           <div className="node-filter">
             <span style={{ minWidth: 0, display: "flex", gap: 6, alignItems: "center" }}>
-              On map: <code>{boxLabel}</code>
+              Only in <code>{boxLabel}</code>
             </span>
             <button className="btn ghost small" onClick={onClearBox} aria-label="Show all findings" style={{ height: 22, padding: "0 4px" }}>
               <Close />

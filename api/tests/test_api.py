@@ -288,3 +288,46 @@ def test_fixes_need_a_known_scan_and_finding(client: TestClient) -> None:
     response = client.post("/api/scans", json={"path": str(FIXTURES / "leaky_emg")})
     scan_id = _wait(client, response.json()["id"])["id"]
     assert client.post(f"/api/scans/{scan_id}/fixes", json={"findings": [999]}).status_code == 409
+
+
+def test_source_of_a_scanned_file(client: TestClient, tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "train.py").write_text(TRAIN, encoding="utf-8")
+    (project / "notes.txt").write_text("not code\n", encoding="utf-8")
+    (tmp_path / "secret.py").write_text("KEY = 1\n", encoding="utf-8")
+    scan_id = _wait(client, client.post("/api/scans", json={"path": str(project)}).json()["id"])[
+        "id"
+    ]
+
+    response = client.get(f"/api/scans/{scan_id}/source", params={"path": "train.py"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "path": "train.py",
+        "text": TRAIN,
+        "cell_starts": [],
+        "changed": False,
+    }
+    report = client.get(f"/api/scans/{scan_id}/report").json()
+    assert report["schema_version"] == "0.6"
+    assert any(b["name"] == "module code" for b in report["files"]["train.py"]["blocks"])
+    for outside in ("../secret.py", "notes.txt", str(tmp_path / "secret.py")):
+        refused = client.get(f"/api/scans/{scan_id}/source", params={"path": outside})
+        assert refused.status_code == 404, outside
+
+    (project / "train.py").write_text(TRAIN + "x = 1\n", encoding="utf-8")
+    changed = client.get(f"/api/scans/{scan_id}/source", params={"path": "train.py"}).json()
+    assert changed["changed"] is True
+
+
+def test_source_of_an_uploaded_file(client: TestClient) -> None:
+    response = client.post(
+        "/api/scans/upload",
+        files={"file": ("demo.zip", _zip({"demo/train.py": TRAIN}), "application/zip")},
+    )
+    scan_id = _wait(client, response.json()["id"])["id"]
+
+    source = client.get(f"/api/scans/{scan_id}/source", params={"path": "train.py"}).json()
+
+    assert source["text"] == TRAIN and source["changed"] is False

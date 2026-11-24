@@ -10,7 +10,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "0.5"
+SCHEMA_VERSION = "0.6"
 
 
 class Severity(StrEnum):
@@ -163,6 +163,51 @@ class Report(BaseModel):
     graph: ProjectGraph | None = None
     explain_stats: ExplainStats | None = None
     exclusions: Exclusions = Field(default_factory=Exclusions)
+    files: dict[str, FileInfo] = Field(
+        default_factory=dict, description="Blocks and fingerprints per scanned file (schema 0.6+)."
+    )
+
+
+class BlockKind(StrEnum):
+    """What a code block is."""
+
+    FUNCTION = "function"
+    METHOD = "method"
+    CLASS = "class"
+    CELL = "cell"  # a notebook code cell
+    MODULE = "module"  # top-level code outside any function or class
+
+
+class Block(BaseModel):
+    """A function, class, method or notebook cell, anchored to a line range of its file.
+
+    Lines are 1-based and refer to the scanned text of the file; for notebooks that is all code
+    cells joined in order (``FileInfo.cell_starts`` maps cells to lines).
+    """
+
+    id: str  # "<path>::<name>", unique in the report
+    path: str
+    name: str  # qualified, e.g. "Trainer.fit" or "cell 3"
+    kind: BlockKind
+    parent: str | None = None  # id of the enclosing class or cell
+    start_line: int
+    end_line: int
+    lines_of_code: int = 0
+    complexity: int = 0  # cyclomatic complexity (0 for cells and module code)
+    has_docstring: bool = False
+    calls: list[str] = Field(
+        default_factory=list, description="Blocks in the same file this one calls, by name match."
+    )
+    findings: list[int] = Field(default_factory=list)  # indices into Report.findings
+
+
+class FileInfo(BaseModel):
+    """What the code view needs to know about one scanned file."""
+
+    sha256: str  # of the scanned text, to tell whether the file changed since the scan
+    lines: int
+    cell_starts: list[int] = Field(default_factory=list)  # notebooks: first line of each cell
+    blocks: list[Block] = Field(default_factory=list)
 
 
 class FixOutcome(BaseModel):

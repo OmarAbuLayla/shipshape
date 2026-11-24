@@ -62,16 +62,18 @@ const GroupNode = memo(function GroupNode({ data }: NodeProps<Node<BoxData>>) {
     <div className={`group-node ${highlighted ? "highlight" : ""}`}>
       <div className="gl">
         {view.label}
-        <button
-          style={{ border: 0, background: "none", cursor: "pointer", padding: 0, font: "inherit" }}
-          onClick={(e) => {
-            e.stopPropagation();
-            data.onToggleFolder(view.folder!);
-          }}
-          aria-label={`Close folder ${view.label}`}
-        >
-          <em>close ▾</em>
-        </button>
+        {view.folder && (
+          <button
+            style={{ border: 0, background: "none", cursor: "pointer", padding: 0, font: "inherit" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onToggleFolder(view.folder!);
+            }}
+            aria-label={`Close folder ${view.label}`}
+          >
+            <em>close ▾</em>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -166,9 +168,11 @@ interface Props {
   onSelectBox: (id: string | null) => void;
   onToggleFolder: (folder: string) => void;
   focus: FocusRequest | null; // box to pan to (e.g. after clicking a location)
+  onOpenBox?: (id: string) => void; // double-click on a box that is not a folder
+  legend?: "map" | "blocks";
 }
 
-function MapInner({ view, highlighted, selectedBox, onSelectBox, onToggleFolder, focus, area }: Props & {
+function MapInner({ view, highlighted, selectedBox, onSelectBox, onToggleFolder, focus, area, onOpenBox }: Props & {
   area: RefObject<HTMLDivElement>;
 }) {
   const [layout, setLayout] = useState<Layout | null>(null);
@@ -290,6 +294,7 @@ function MapInner({ view, highlighted, selectedBox, onSelectBox, onToggleFolder,
       onNodeDoubleClick={(_, node) => {
         const folder = (node.data as BoxData).view.folder;
         if (folder) onToggleFolder(folder);
+        else if (node.type === "box") onOpenBox?.(node.id);
       }}
       zoomOnDoubleClick={false}
       onPaneClick={() => onSelectBox(null)}
@@ -317,10 +322,19 @@ export function MapView(props: Props) {
         <span><i style={{ background: "var(--crit-soft)", border: "2px solid var(--crit)" }} />critical</span>
         <span><i style={{ background: "var(--major-soft)", border: "1px solid var(--major)" }} />major</span>
         <span><i style={{ background: "var(--minor-soft)", border: "1.5px dotted var(--minor)" }} />minor</span>
-        <span><i style={{ border: "1px dashed var(--major)" }} />missing</span>
-        <span style={{ color: "var(--faint)" }}>→ imports</span>
-        <span style={{ color: "var(--ok)" }}>⇢ tests</span>
-        <span style={{ color: "var(--major)" }}>⋯ reads data</span>
+        {props.legend === "blocks" ? (
+          <>
+            <span style={{ color: "var(--faint)" }}>→ calls (matched by name)</span>
+            <span className="faint">double-click a block for its code</span>
+          </>
+        ) : (
+          <>
+            <span><i style={{ border: "1px dashed var(--major)" }} />missing</span>
+            <span style={{ color: "var(--faint)" }}>→ imports</span>
+            <span style={{ color: "var(--ok)" }}>⇢ tests</span>
+            <span style={{ color: "var(--major)" }}>⋯ reads data</span>
+          </>
+        )}
       </div>
     </div>
   );
