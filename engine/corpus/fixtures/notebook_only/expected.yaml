@@ -1,0 +1,6 @@
+# A lone notebook: magics, a broken cell, an absolute path and unseeded shuffling.
+# Locations are reported per code cell (markdown cells are not counted).
+expected:
+  - {check: repro.hardcoded-path, path: analysis.ipynb, cell: 2, line: 1}
+  - {check: repro.missing-seed, path: analysis.ipynb, cell: 3, line: 1}
+  - {check: repro.missing-environment, path: "."}

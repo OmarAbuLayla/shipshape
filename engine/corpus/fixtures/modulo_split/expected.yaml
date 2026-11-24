@@ -1,0 +1,4 @@
+# Hand-rolled "every fifth sample" hold-out while samples carry the paper they came from.
+expected:
+  - {check: correctness.grouped-split-leakage, path: sampler.py, line: 20}
+  - {check: correctness.grouped-split-leakage, path: sampler.py, line: 21}

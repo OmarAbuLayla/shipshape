@@ -1,0 +1,6 @@
+# One 700+ line file, one long if/elif chain, and a package copied into a backup folder.
+expected:
+  - {check: structure.oversized-file, path: monolith.py}
+  - {check: structure.complex-function, path: router.py, line: 6}
+  - {check: structure.duplicated-package, path: lab/core}
+  - {check: structure.duplicated-package, path: lab_backup/core}

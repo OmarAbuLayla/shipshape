@@ -1,0 +1,7 @@
+# Bugs that ruff catches reliably, mapped to Shipshape findings.
+expected:
+  - {check: lint.unused-import, path: tasks.py, line: 5}
+  - {check: lint.unused-import, path: tasks.py, line: 6}
+  - {check: lint.mutable-default, path: tasks.py, line: 9}
+  - {check: lint.loop-closure, path: tasks.py, line: 19}
+  - {check: lint.undefined-name, path: tasks.py, line: 25}

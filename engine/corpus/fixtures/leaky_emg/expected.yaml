@@ -1,0 +1,22 @@
+# A typical vibe-coded EMG classifier: window-level split with subject ids in scope,
+# hard-coded data path, no seed, loose requirements, narrating comments, no tests.
+expected:
+  - {check: correctness.grouped-split-leakage, path: data.py, line: 18}
+  - {check: correctness.swallowed-exception, path: utils.py, line: 22}
+  - {check: repro.hardcoded-path, path: train.py, line: 7}
+  - {check: repro.missing-seed, path: data.py, line: 18}
+  - {check: repro.missing-seed, path: train.py, line: 11}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 1}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 3}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 4}
+  - {check: readability.restating-comments, path: utils.py, line: 5}
+  - {check: readability.restating-comments, path: utils.py, line: 8}
+  - {check: readability.restating-comments, path: utils.py, line: 10}
+  - {check: readability.restating-comments, path: utils.py, line: 12}
+  - {check: readability.restating-comments, path: utils.py, line: 20}
+  - {check: readability.restating-comments, path: utils.py, line: 27}
+  - {check: readability.print-debugging, path: utils.py}
+  - {check: readability.missing-type-hints, path: data.py}
+  - {check: readability.missing-type-hints, path: train.py}
+  - {check: readability.missing-type-hints, path: utils.py}
+  - {check: testing.no-tests, path: "."}

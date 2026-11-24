@@ -1,0 +1,261 @@
+"""Checks for whether someone else (or future you) can rerun the project and get the same result."""
+
+from __future__ import annotations
+
+import ast
+import re
+import sys
+from typing import ClassVar
+
+from shipshape.astutil import (
+    call_name,
+    calls,
+    get_keyword,
+    is_constant,
+    string_constants,
+    top_level_imports,
+)
+from shipshape.checks.base import Check, examples, plural
+from shipshape.models import Dimension, Finding, Location, Severity
+from shipshape.project import Project
+
+ABSOLUTE_PATH = re.compile(
+    r"^(?:[A-Za-z]:[\\/]|\\\\[\w.$-]+[\\/]|/(?:home|Users|mnt|media|data|root|opt|srv|Volumes)/|~[\\/])"
+)
+ENVIRONMENT_FILES = (
+    "requirements*.txt",
+    "requirements*.in",
+    "environment*.yml",
+    "environment*.yaml",
+    "conda*.yml",
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "Pipfile",
+    "Pipfile.lock",
+    "poetry.lock",
+    "uv.lock",
+)
+PIN_MARKERS = re.compile(r"==|~=|===|\s@\s")
+SEED_KEYWORDS = frozenset({"random_state", "seed", "generator", "rng"})
+GLOBAL_SEED_CALLS = frozenset(
+    {"manual_seed", "manual_seed_all", "set_seed", "set_random_seed", "seed_everything"}
+)
+STDLIB_RANDOM = frozenset(
+    {"shuffle", "sample", "choice", "choices", "randint", "random", "uniform", "gauss", "randrange"}
+)
+TORCH_RANDOM = frozenset(
+    {"rand", "randn", "randint", "randperm", "rand_like", "randn_like", "bernoulli", "multinomial"}
+)
+SHUFFLING_SPLITTERS = frozenset(
+    {"KFold", "StratifiedKFold", "ShuffleSplit", "StratifiedShuffleSplit"}
+)
+WEIGHTED_LAYER_PREFIXES = (
+    "Linear",
+    "LazyLinear",
+    "Bilinear",
+    "Conv",
+    "LazyConv",
+    "LSTM",
+    "GRU",
+    "RNN",
+    "Embedding",
+    "MultiheadAttention",
+    "Transformer",
+)
+
+
+class HardcodedPath(Check):
+    """Absolute paths that only exist on the author's machine."""
+
+    id: ClassVar[str] = "repro.hardcoded-path"
+    title: ClassVar[str] = "Hard-coded absolute paths"
+    severity: ClassVar[Severity] = Severity.MAJOR
+    dimension: ClassVar[Dimension] = Dimension.REPRODUCIBILITY
+    concept: ClassVar[str] = "Config over hard-coding"
+
+    def run(self, project: Project) -> list[Finding]:
+        """Find string literals that look like absolute, machine-specific paths."""
+        hits: list[tuple[str, Location]] = []
+        for source in project.parsed:
+            assert source.tree is not None
+            for node in string_constants(source.tree):
+                value = str(node.value)
+                if len(value) <= 260 and "\n" not in value and ABSOLUTE_PATH.match(value):
+                    hits.append((value, source.location(node.lineno)))
+        if not hits:
+            return []
+        message = (
+            f"{plural(len(hits), 'absolute path is', 'absolute paths are')} written into the "
+            f"code, for example {examples([hits[0][0]], 1)}. Anyone else, or you on another "
+            f"machine or a server, has to edit source code before it runs. Put paths in a "
+            f"config file or a command-line argument, relative to the project."
+        )
+        return [self.finding(message, [loc for _, loc in hits], evidence=hits[0][0])]
+
+
+def third_party_imports(project: Project) -> set[str]:
+    """Top-level imported packages that are neither standard library nor part of the project."""
+    local = project.local_module_names()
+    found: set[str] = set()
+    for source in project.parsed:
+        assert source.tree is not None
+        found |= top_level_imports(source.tree)
+    return {
+        name
+        for name in found
+        if name not in sys.stdlib_module_names and name not in local and name != "__future__"
+    }
+
+
+class MissingEnvironment(Check):
+    """No file that says which packages the project needs."""
+
+    id: ClassVar[str] = "repro.missing-environment"
+    title: ClassVar[str] = "No list of dependencies"
+    severity: ClassVar[Severity] = Severity.MAJOR
+    dimension: ClassVar[Dimension] = Dimension.REPRODUCIBILITY
+    concept: ClassVar[str] = "Reproducible environments"
+
+    def run(self, project: Project) -> list[Finding]:
+        """Flag projects with third-party imports but no requirements/environment file."""
+        if project.files_matching(*ENVIRONMENT_FILES, max_depth=3):
+            return []
+        packages = sorted(third_party_imports(project))
+        if not packages:
+            return []
+        message = (
+            f"The code imports {plural(len(packages), 'third-party package')} "
+            f"({examples(packages, 5)}) but there is no requirements.txt, environment.yml or "
+            f"pyproject.toml. Nobody can recreate the environment, and in a few months even "
+            f"you won't remember which versions worked."
+        )
+        return [self.finding(message, [Location(path=".")], evidence=", ".join(packages[:5]))]
+
+
+class UnpinnedDependencies(Check):
+    """Requirements without versions, so every fresh install can differ."""
+
+    id: ClassVar[str] = "repro.unpinned-dependencies"
+    title: ClassVar[str] = "Dependencies without pinned versions"
+    severity: ClassVar[Severity] = Severity.MINOR
+    dimension: ClassVar[Dimension] = Dimension.REPRODUCIBILITY
+    concept: ClassVar[str] = "Reproducible environments"
+
+    def run(self, project: Project) -> list[Finding]:
+        """Inspect every requirements file line by line."""
+        findings = []
+        for rel in project.files_matching("requirements*.txt", "requirements*.in"):
+            try:
+                text = (project.root / rel).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            total = 0
+            unpinned: list[tuple[int, str]] = []
+            for number, raw in enumerate(text.splitlines(), start=1):
+                line = raw.split("#", 1)[0].strip()
+                if not line or line.startswith(("-", "git+", "http", "./", "file:")):
+                    continue
+                total += 1
+                if not PIN_MARKERS.search(f" {line} "):
+                    unpinned.append((number, re.split(r"[\s<>=!~;\[]", line, maxsplit=1)[0]))
+            if not unpinned:
+                continue
+            message = (
+                f"{len(unpinned)} of {total} packages in `{rel}` have no exact version "
+                f"({examples([name for _, name in unpinned])}). A fresh install next year can "
+                f"pull versions that behave differently or break. Pin exact versions (for "
+                f"example with `pip freeze`) for anything you report results from."
+            )
+            findings.append(
+                self.finding(
+                    message, [Location(path=rel, start_line=number) for number, _ in unpinned]
+                )
+            )
+        return findings
+
+
+def _has_seed_argument(call: ast.Call) -> bool:
+    return any(kw.arg in SEED_KEYWORDS and not is_constant(kw.value, None) for kw in call.keywords)
+
+
+def is_global_seed(call: ast.Call) -> bool:
+    """True for calls such as ``torch.manual_seed(0)`` or ``np.random.seed(0)``."""
+    parts = call_name(call).split(".")
+    return parts[-1] in GLOBAL_SEED_CALLS or (parts[-1] == "seed" and "random" in parts)
+
+
+def random_call(call: ast.Call) -> str | None:
+    """Describe an unseeded source of randomness, or ``None`` if the call is deterministic."""
+    name = call_name(call)
+    parts = name.split(".")
+    last = parts[-1]
+    if _has_seed_argument(call):
+        return None
+    if parts[0] == "random" and len(parts) == 2 and last in STDLIB_RANDOM:
+        return name
+    if parts[0] in {"np", "numpy"} and "random" in parts[:-1]:
+        if last == "default_rng":
+            return None if call.args else name
+        return None if last in {"seed", "RandomState", "Generator"} else name
+    if parts[0] == "torch" and last in TORCH_RANDOM:
+        return name
+    if last in {"train_test_split", "random_split"}:
+        return name
+    if last in SHUFFLING_SPLITTERS and (
+        last.endswith("ShuffleSplit") or is_constant(_value(get_keyword(call, "shuffle")), True)
+    ):
+        return name
+    if last == "DataLoader" and is_constant(_value(get_keyword(call, "shuffle")), True):
+        return f"{name}(shuffle=True)"
+    return None
+
+
+def _value(keyword: ast.keyword | None) -> ast.expr | None:
+    return keyword.value if keyword is not None else None
+
+
+def _first_torch_layer(tree: ast.AST) -> ast.Call | None:
+    """First ``nn.<Layer>(...)`` with randomly initialised weights (not losses or activations)."""
+    for call in calls(tree):
+        parts = call_name(call).split(".")
+        if "nn" in parts[:-1] and parts[-1].startswith(WEIGHTED_LAYER_PREFIXES):
+            return call
+    return None
+
+
+class MissingSeed(Check):
+    """Randomness everywhere, no seed anywhere."""
+
+    id: ClassVar[str] = "repro.missing-seed"
+    title: ClassVar[str] = "Random results with no seed"
+    severity: ClassVar[Severity] = Severity.MAJOR
+    dimension: ClassVar[Dimension] = Dimension.REPRODUCIBILITY
+    concept: ClassVar[str] = "Reproducible experiments"
+
+    def run(self, project: Project) -> list[Finding]:
+        """Report unseeded randomness, unless a global seed is set anywhere in the project."""
+        sites: list[tuple[str, Location]] = []
+        for source in project.parsed:
+            assert source.tree is not None
+            for call in calls(source.tree):
+                if is_global_seed(call):
+                    return []
+                description = random_call(call)
+                if description:
+                    sites.append((description, source.location(call.lineno)))
+            if "torch" in top_level_imports(source.tree):
+                layer = _first_torch_layer(source.tree)
+                if layer is not None:
+                    sites.append(("random weight init", source.location(layer.lineno)))
+        if not sites:
+            return []
+        sites.sort(key=lambda site: (site[1].path, site[1].cell or 0, site[1].start_line or 0))
+        message = (
+            f"Randomness is used in {plural(len(sites), 'place')} "
+            f"({examples([name for name, _ in sites])}) but no random seed is set anywhere. "
+            f"Results change from run to run, so you can't tell whether a change actually "
+            f"helped. Set one seed at the start (random, numpy and torch) and report results "
+            f"over several seeds."
+        )
+        return [self.finding(message, [loc for _, loc in sites])]

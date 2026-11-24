@@ -1,0 +1,5 @@
+# A key in the source and a .env file that git would commit.
+# The fake key deliberately matches no vendor format, so GitHub secret scanning stays quiet.
+expected:
+  - {check: security.hardcoded-secret, path: client.py, line: 7}
+  - {check: security.env-file-not-ignored, path: .env}

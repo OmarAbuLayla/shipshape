@@ -1,0 +1,3 @@
+# Negative control: typed, documented, seeded, subject-aware split, tests, pinned deps.
+# Any finding here is a false positive.
+expected: []
