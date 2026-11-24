@@ -217,7 +217,8 @@ class FixOutcome(BaseModel):
     check_id: str
     title: str
     applied: bool
-    reason: str = ""  # why it was skipped
+    reason: str = ""  # why it was skipped, or how a second round applied it
+    second_round: bool = False  # regenerated against the fixed code after a collision
 
 
 class CheckDelta(BaseModel):

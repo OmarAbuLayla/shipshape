@@ -146,9 +146,8 @@ def _display_names(projects: dict[str, _Project], roots: dict[str, str | None]) 
             projects[key].name = f"{projects[key].name} ({parent})"
 
 
-def build_profile(scans: Iterable[tuple[ScanSummary, str | None, str]]) -> Profile:
-    """Aggregate finished scans, oldest first: (summary, scanned folder, report JSON)."""
-    history = list(scans)
+def _group(history: list[tuple[ScanSummary, str | None, str]]) -> dict[str, _Project]:
+    """Sort scans into projects, oldest scan first in each."""
     roots_by_name: dict[str, set[str]] = {}
     for summary, root, _ in history:
         if summary.source == "path" and root:
@@ -158,52 +157,62 @@ def build_profile(scans: Iterable[tuple[ScanSummary, str | None, str]]) -> Profi
     for summary, root, raw in history:
         key = _key(summary, root, roots_by_name)
         roots[key] = key.removeprefix("path:") if key.startswith("path:") else None
-        project = projects.setdefault(key, _Project(name=summary.name))
         report = json.loads(raw)
-        project.scans.append(_Scan(summary, _concepts(report), _covered(report), _silenced(report)))
-    count = len(history)
+        projects.setdefault(key, _Project(name=summary.name)).scans.append(
+            _Scan(summary, _concepts(report), _covered(report), _silenced(report))
+        )
     _display_names(projects, roots)
+    return projects
 
+
+def _resolved(project: _Project) -> dict[str, _Seen]:
+    """Concepts gone from the latest scan while their files are still checked (truly fixed)."""
+    latest = project.scans[-1]
+    earlier = {c for scan in project.scans[:-1] for c in scan.concepts} - latest.concepts.keys()
+    fixed = {}
+    for concept in earlier:
+        last = next(s.concepts[concept] for s in reversed(project.scans) if concept in s.concepts)
+        still_checked = (last.paths & latest.covered) - latest.silenced.get(concept, set())
+        if still_checked:  # otherwise: files gone, left out or silenced, not fixed
+            fixed[concept] = last
+    return fixed
+
+
+def _project_stat(project: _Project) -> ProjectStat:
+    first, latest = project.scans[0].summary, project.scans[-1].summary
+    return ProjectStat(
+        name=project.name,
+        scans=len(project.scans),
+        first_grade=first.grade or "",
+        latest_grade=latest.grade or "",
+        latest_scan=latest.id,
+        latest_at=latest.created_at,
+        findings=latest.findings or 0,
+    )
+
+
+def build_profile(scans: Iterable[tuple[ScanSummary, str | None, str]]) -> Profile:
+    """Aggregate finished scans, oldest first: (summary, scanned folder, report JSON)."""
+    history = list(scans)
+    projects = _group(history)
     concepts: dict[str, ConceptStat] = {}
-    project_stats = []
     for project in projects.values():
-        latest_scan = project.scans[-1]
-        latest_summary, latest = latest_scan.summary, latest_scan.concepts
-        earlier = {c for scan in project.scans[:-1] for c in scan.concepts}
-        for concept, seen in latest.items():
+        for concept, seen in project.scans[-1].concepts.items():
             stat = concepts.setdefault(concept, _new_stat(concept, seen))
             stat.projects.append(project.name)
             stat.places += seen.places
             stat.severity = min(stat.severity, seen.severity, key=SEVERITY_ORDER.__getitem__)
-        for concept in earlier - latest.keys():
-            last = next(
-                s.concepts[concept] for s in reversed(project.scans) if concept in s.concepts
-            )
-            still_checked = (last.paths & latest_scan.covered) - latest_scan.silenced.get(
-                concept, set()
-            )
-            if not still_checked:
-                continue  # files gone, left out or silenced: not fixed, just no longer reported
+        for concept, last in _resolved(project).items():
             concepts.setdefault(concept, _new_stat(concept, last)).resolved_in.append(project.name)
-        project_stats.append(
-            ProjectStat(
-                name=project.name,
-                scans=len(project.scans),
-                first_grade=project.scans[0].summary.grade or "",
-                latest_grade=latest_summary.grade or "",
-                latest_scan=latest_summary.id,
-                latest_at=latest_summary.created_at,
-                findings=latest_summary.findings or 0,
-            )
-        )
-    ordered = sorted(
-        concepts.values(),
-        key=lambda c: (-len(c.projects), SEVERITY_ORDER[c.severity], -c.places, c.concept),
-    )
     return Profile(
-        scans=count,
-        projects=sorted(project_stats, key=lambda p: p.latest_at, reverse=True),
-        concepts=ordered,
+        scans=len(history),
+        projects=sorted(
+            (_project_stat(p) for p in projects.values()), key=lambda p: p.latest_at, reverse=True
+        ),
+        concepts=sorted(
+            concepts.values(),
+            key=lambda c: (-len(c.projects), SEVERITY_ORDER[c.severity], -c.places, c.concept),
+        ),
     )
 
 

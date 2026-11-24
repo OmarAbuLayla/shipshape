@@ -212,6 +212,7 @@ export interface FixOutcome {
   title: string;
   applied: boolean;
   reason: string;
+  second_round?: boolean;
 }
 
 export interface CheckDelta {

@@ -13,7 +13,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-from shipshape.fixes import apply_fixes, project_zip
+from shipshape.fixes import Regenerate, apply_fixes, project_zip
 from shipshape.models import FixRun, Report
 from shipshape.project import Project
 
@@ -36,6 +36,9 @@ class FixRequest(BaseModel):
     """Which findings' fixes to apply (indices into the report's findings)."""
 
     findings: list[int] = Field(min_length=1, max_length=200)
+    second_round: bool = Field(
+        default=True, description="Regenerate fixes that collided with earlier ones (LLM calls)."
+    )
 
 
 class FixRunResponse(FixRun):
@@ -69,7 +72,12 @@ def forget(data_dir: Path, scan_id: str) -> None:
 
 
 def run(
-    data_dir: Path, summary: ScanSummary, root: str | None, report: Report, indices: list[int]
+    data_dir: Path,
+    summary: ScanSummary,
+    root: str | None,
+    report: Report,
+    indices: list[int],
+    regenerate: Regenerate | None = None,
 ) -> FixRunResponse:
     """Apply the chosen fixes to a copy of the scanned project and store the fixed zip."""
     if any(i < 0 or i >= len(report.findings) for i in indices):
@@ -90,7 +98,7 @@ def run(
                 raise FixUnavailableError("The scanned folder no longer exists.")
             project_root = Path(root)
         project = Project.load(project_root)
-        result = apply_fixes(project, report, indices)
+        result = apply_fixes(project, report, indices, regenerate)
         response = FixRunResponse(**result.run.model_dump())
         target = zip_path(data_dir, summary.id)
         target.unlink(missing_ok=True)

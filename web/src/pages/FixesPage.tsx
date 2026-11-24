@@ -28,6 +28,7 @@ export function FixesPage() {
 function FixResult({ scan, run }: { scan: ScanSummary; run: FixRun }) {
   const applied = run.outcomes.filter((o) => o.applied).length;
   const skipped = run.outcomes.filter((o) => !o.applied);
+  const secondRound = run.outcomes.filter((o) => o.second_round);
   const download = (format: "patch" | "zip") => `/api/scans/${scan.id}/fixes/download?format=${format}`;
   return (
     <div className="page fixes">
@@ -88,6 +89,24 @@ function FixResult({ scan, run }: { scan: ScanSummary; run: FixRun }) {
                 <span>
                   <b>{d.title}</b>: {plural(d.before, "place")} before, {d.after === 0 ? "none" : d.after} after
                 </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {secondRound.length > 0 && (
+        <section className="sec">
+          <h2>Second round</h2>
+          <p className="muted small-note">
+            These fixes collided with an earlier fix on the same lines, so they were explained again against the
+            already fixed code, verified the same way, and then applied.
+          </p>
+          <ul className="delta-list">
+            {secondRound.map((o) => (
+              <li key={o.finding}>
+                <Check size={14} />
+                <span><b>{o.title}</b></span>
               </li>
             ))}
           </ul>

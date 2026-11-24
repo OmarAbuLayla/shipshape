@@ -17,9 +17,10 @@ from rich.table import Table
 from shipshape import __version__
 from shipshape.analyzer import analyze_project
 from shipshape.checks import RULES, default_checks
+from shipshape.checks.base import plural
 from shipshape.evaluation import case_root, evaluate, load_corpus, load_manifest
 from shipshape.export import export, format_for_path
-from shipshape.fixes import apply_fixes, fixable, project_zip
+from shipshape.fixes import FixResult, apply_fixes, fixable, project_zip
 from shipshape.lessons import all_lessons, find_lesson
 from shipshape.llm.cache import ExplanationCache
 from shipshape.llm.client import FatalLLMError, LLMError, OpenAICompatibleClient, ping
@@ -88,8 +89,13 @@ def _scan_project(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     report = analyze_project(project)
-    if not explain or not report.findings:
-        return project, report
+    if explain and report.findings:
+        _explain(report, project, max_findings, no_cache)
+    return project, report
+
+
+def _explain(report: Report, project: Project, max_findings: int, no_cache: bool) -> None:
+    """Explain the first ``max_findings`` findings in place. Exits on user-facing errors."""
     try:
         settings = load_settings()
         client = OpenAICompatibleClient(settings)
@@ -115,7 +121,6 @@ def _scan_project(
     except FatalLLMError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    return project, report
 
 
 @app.command()
@@ -163,6 +168,40 @@ def analyze(
             typer.echo(f"\nFindings exported to {export_to}")
 
 
+def _refuse_targets_inside(path: Path, *targets: Path | None) -> None:
+    """Exit if an output file would be written into the project being fixed."""
+    for target in targets:
+        if target is not None and target.resolve().is_relative_to(path.resolve()):
+            typer.echo(f"Error: write {target} outside the project folder.", err=True)
+            raise typer.Exit(code=2)
+
+
+def _fixable_indices(report: Report, only: list[str] | None) -> list[int]:
+    return [
+        i
+        for i, finding in enumerate(report.findings)
+        if fixable(finding) and (not only or finding.check_id in only)
+    ]
+
+
+def _write_fix_outputs(
+    result: FixResult, project: Project, patch: Path | None, zip_to: Path | None
+) -> None:
+    """Save the patch and/or the fixed zip, and say what was (not) written."""
+    if patch is not None and result.texts:
+        patch.write_bytes(result.run.patch.encode("utf-8"))
+        typer.echo(f"\nPatch written to {patch} (apply with: git apply {patch.name})")
+    if zip_to is not None and result.texts:
+        try:
+            zip_to.write_bytes(project_zip(project.root, result.texts, f"{project.name}-fixed"))
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f"\nFixed copy written to {zip_to}")
+    if patch is None and zip_to is None:
+        typer.echo("\nNothing was written. Use --patch or --zip to save the fixes.")
+
+
 @app.command("fix")
 def fix(
     path: Annotated[Path, typer.Argument(help="Project folder to fix.")],
@@ -176,6 +215,13 @@ def fix(
         list[str] | None,
         typer.Option("--only", help="Only fix findings of this check id (repeatable)."),
     ] = None,
+    second_round: Annotated[
+        bool,
+        typer.Option(
+            "--second-round/--no-second-round",
+            help="Regenerate fixes that collided with earlier ones (one more LLM call each).",
+        ),
+    ] = True,
     max_findings: MaxFindingsOption = DEFAULT_MAX_FINDINGS,
     no_cache: NoCacheOption = False,
 ) -> None:
@@ -184,33 +230,20 @@ def fix(
     The project folder itself is never changed. Without --patch or --zip, this only shows
     what the fixes would change.
     """
-    for target in (patch, zip_to):
-        if target is not None and target.resolve().is_relative_to(path.resolve()):
-            typer.echo(f"Error: write {target} outside the project folder.", err=True)
-            raise typer.Exit(code=2)
+    _refuse_targets_inside(path, patch, zip_to)
     project, report = _scan_project(path, True, max_findings, no_cache)
-    chosen = [
-        i
-        for i, finding in enumerate(report.findings)
-        if fixable(finding) and (not only or finding.check_id in only)
-    ]
+    chosen = _fixable_indices(report, only)
     if not chosen:
         typer.echo("No verified fixes to apply.")
         return
-    result = apply_fixes(project, report, chosen)
+
+    def regenerate(current: Project, retry: Report) -> None:
+        typer.echo(f"Second round: {plural(len(retry.findings), 'collided fix')}.", err=True)
+        _explain(retry, current, len(retry.findings), no_cache)
+
+    result = apply_fixes(project, report, chosen, regenerate if second_round else None)
     render_fix_run(result.run, report, Console())
-    if patch is not None and result.texts:
-        patch.write_text(result.run.patch, encoding="utf-8", newline="\n")
-        typer.echo(f"\nPatch written to {patch} (apply with: git apply {patch.name})")
-    if zip_to is not None and result.texts:
-        try:
-            zip_to.write_bytes(project_zip(project.root, result.texts, f"{project.name}-fixed"))
-        except ValueError as exc:
-            typer.echo(f"Error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
-        typer.echo(f"\nFixed copy written to {zip_to}")
-    if patch is None and zip_to is None:
-        typer.echo("\nNothing was written. Use --patch or --zip to save the fixes.")
+    _write_fix_outputs(result, project, patch, zip_to)
 
 
 @app.command("map")

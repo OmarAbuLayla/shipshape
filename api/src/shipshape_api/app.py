@@ -19,9 +19,11 @@ from pydantic import BaseModel, Field
 from shipshape import __version__ as engine_version
 from shipshape.export import ExportFormat, export
 from shipshape.lessons import Lesson, all_lessons, find_lesson
-from shipshape.llm.explain import DEFAULT_MAX_FINDINGS
+from shipshape.llm.cache import ExplanationCache
+from shipshape.llm.explain import DEFAULT_MAX_FINDINGS, explain_report
 from shipshape.llm.settings import SettingsError, load_settings
 from shipshape.models import Report
+from shipshape.project import Project
 
 from shipshape_api import __version__, fixes, source
 from shipshape_api.fixes import FixRequest, FixRunResponse
@@ -231,6 +233,18 @@ def create_app(
         except source.SourceUnavailableError as exc:
             raise HTTPException(404, str(exc)) from exc
 
+    def regenerate(current: Project, retry: Report) -> None:
+        """Second round of fixes: explain the collided problems again against the fixed copy."""
+        connection = client_factory()
+        explain_report(
+            retry,
+            current,
+            connection.client,
+            provider=connection.provider,
+            max_findings=len(retry.findings),
+            cache=ExplanationCache(),
+        )
+
     @app.post("/api/scans/{scan_id}/fixes")
     def apply_fixes(scan_id: str, request: FixRequest) -> FixRunResponse:
         """Apply the chosen verified fixes to a copy, scan it again, and keep the result.
@@ -250,6 +264,7 @@ def create_app(
                 store.root(scan_id),
                 Report.model_validate_json(raw),
                 request.findings,
+                regenerate if request.second_round else None,
             )
         except fixes.FixUnavailableError as exc:
             raise HTTPException(409, str(exc)) from exc
