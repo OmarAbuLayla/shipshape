@@ -2,10 +2,17 @@
 
 import pytest
 
-from shipshape.checks.correctness import GroupedSplitLeakage, SwallowedException
+from shipshape.checks.correctness import (
+    ArrayNoneComparison,
+    GroupedSplitLeakage,
+    SwallowedException,
+)
 from shipshape.checks.readability import PrintDebugging, is_restating
 from shipshape.checks.reproducibility import MissingSeed, UnpinnedDependencies
+from shipshape.checks.ruff import RuffCheck
 from shipshape.checks.security import EnvFileNotIgnored, HardcodedSecret, _gitignore_covers
+from shipshape.checks.structure import DuplicatedPackage
+from shipshape.checks.testing import UntestedModules
 from shipshape.models import Dimension, Finding, Location, Severity
 from shipshape.scoring import dimension_scores, overall_grade
 
@@ -203,3 +210,68 @@ def test_methods_and_closures_are_counted_once() -> None:
     names = [name for name, *_ in function_complexities(code)]
 
     assert names == ["A.method", "inner", "top"]
+
+
+LOADER = """import pandas as pd
+
+
+def load(path):
+    frame = pd.read_csv(path)
+    if frame == None:
+        return None
+    return frame.dropna()
+"""
+
+
+def test_renamed_package_copy_is_found_by_content(make_project: MakeProject) -> None:
+    files = {"data/__init__.py": "", "data/load.py": LOADER, "data/clean.py": "X = 1\n"}
+    files |= {
+        "data_old/__init__.py": "",
+        "data_old/load.py": LOADER.replace("return None", "return None  # old"),
+        "data_old/clean.py": "X = 1\n",
+    }
+    (finding,) = DuplicatedPackage().run(make_project(files))
+    assert {loc.path for loc in finding.locations} == {"data", "data_old"}
+    assert "different names" in finding.message
+
+
+def test_different_packages_with_shared_file_names_are_not_copies(
+    make_project: MakeProject,
+) -> None:
+    files = {
+        "api/__init__.py": "",
+        "api/models.py": "class User:\n    name: str\n",
+        "api/utils.py": "def slug(text):\n    return text.lower()\n",
+        "ml/__init__.py": "",
+        "ml/models.py": "import torch\n\nNET = torch.nn.Linear(2, 1)\n",
+        "ml/utils.py": "def mean(xs):\n    return sum(xs) / len(xs)\n",
+    }
+    assert DuplicatedPackage().run(make_project(files)) == []
+
+
+def test_untested_modules_counts_small_modules_too(make_project: MakeProject) -> None:
+    body = "".join(f"def f{i}():\n    return {i}\n\n\n" for i in range(6))
+    files = {"a.py": body, "b.py": body, "c.py": body, "tests/test_a.py": "import a\n"}
+    (finding,) = UntestedModules().run(make_project(files))
+    assert {loc.path for loc in finding.locations} == {"b.py", "c.py"}
+
+
+def test_none_comparison_on_a_dataframe_is_a_correctness_problem(
+    make_project: MakeProject,
+) -> None:
+    project = make_project({"load.py": LOADER, "other.py": "def f(x):\n    return x == None\n"})
+    (finding,) = ArrayNoneComparison().run(project)
+    assert [(loc.path, loc.start_line) for loc in finding.locations] == [("load.py", 6)]
+    lint = [f for f in RuffCheck().run(project) if f.check_id == "lint.none-comparison"]
+    assert [(loc.path, loc.start_line) for f in lint for loc in f.locations] == [("other.py", 2)]
+
+
+def test_merged_parameter_counts_as_a_dataframe(make_project: MakeProject) -> None:
+    code = (
+        "def merge(visits, labs):\n"
+        "    if labs == None:\n"
+        "        return visits\n"
+        "    return visits.merge(labs, on='id')\n"
+    )
+    (finding,) = ArrayNoneComparison().run(make_project({"m.py": code}))
+    assert finding.locations[0].start_line == 2

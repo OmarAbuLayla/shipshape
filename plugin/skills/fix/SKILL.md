@@ -37,9 +37,12 @@ passed. That guarantee is the point of this skill: never skip it.
    - If it says **PASSED**, apply exactly the same edits with your Edit tool. If it adds that
      the problem is still reported elsewhere (for example in a copied folder), tell the user
      where; do not silently leave it out.
+   - If the other place is a copy that nothing imports (Shipshape reports copies as
+     `structure.duplicated-package`), suggest deleting the copy instead of fixing both, and
+     delete it only when the user agrees.
    - If it says **REJECTED**, read the reason and revise at most twice. If it still fails, do not
      apply anything for this finding: explain the fix in words instead.
-   - Findings in notebooks (`[cell N]`, where N counts code cells only, from 1) cannot be
+   - Findings in notebooks (`[code cell N]`, counting code cells only, from 1) cannot be
      verified. Describe the change; do not edit the notebook unless the user asks, and then say
      it was not verified.
 5. **Scan again** and report the grade and scores before and after, which findings were fixed,

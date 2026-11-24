@@ -31,7 +31,7 @@ Idioms are how Python developers read code quickly. Unidiomatic comparisons are 
 
 ## How Shipshape spots it
 
-Through ruff's rules E711 (comparison to `None` with `==` or `!=`) and E712 (comparison to `True` or `False` with `==` or `!=`).
+Through ruff's rules E711 (comparison to `None` with `==` or `!=`) and E712 (comparison to `True` or `False` with `==` or `!=`). When the value compared to `None` clearly comes from pandas or numpy, the same pattern is reported as a correctness problem instead (`correctness.array-none-comparison`), because there it crashes. Shipshape cannot see types, so a DataFrame passed in from far away is still reported only as style.
 
 ## Read more
 

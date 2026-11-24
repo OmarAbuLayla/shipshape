@@ -179,7 +179,7 @@ describe("helpers", () => {
   });
 
   it("formats locations and picks the worst severity", () => {
-    expect(formatLocation({ path: "a.py", start_line: 3, end_line: null, cell: 2 })).toBe("a.py [cell 2]:3");
+    expect(formatLocation({ path: "a.py", start_line: 3, end_line: null, cell: 2 })).toBe("a.py [code cell 2]:3");
     expect(formatLocation({ path: ".", start_line: null, end_line: null, cell: null })).toBe("whole project");
     expect(worstSeverity(["minor", null, "major"])).toBe("major");
   });

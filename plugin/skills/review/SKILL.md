@@ -27,6 +27,10 @@ them. This skill only reads: do not edit files here.
    problem Shipshape did not report (leakage through preprocessing, patient data sent to an
    outside service, dead copies of code), mention it separately and say it was not one of
    Shipshape's findings.
+   In machine-learning code, always check two kinds of leakage Shipshape cannot see:
+   preprocessing statistics (scalers, quantiles, medians, imputers, feature selection)
+   computed on all rows before the train/test split, and hand-made splits in notebooks or
+   scripts (shuffled indices sliced into train and test) that ignore subjects or patients.
 6. **Point onwards.** Name the lesson for one or two concepts the user may not know (they can
    run `/shipshape:lesson <name>`), offer `/shipshape:fix` for the findings that have a clear
    fix, and offer the `map` tool if the user wants to see the project's structure.

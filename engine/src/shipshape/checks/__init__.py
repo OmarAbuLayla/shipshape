@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from shipshape.checks.base import Check
-from shipshape.checks.correctness import GroupedSplitLeakage, SwallowedException
+from shipshape.checks.correctness import (
+    ArrayNoneComparison,
+    GroupedSplitLeakage,
+    SwallowedException,
+)
 from shipshape.checks.readability import (
     MissingDocstrings,
     MissingTypeHints,
@@ -34,6 +38,7 @@ def default_checks() -> list[Check]:
     return [
         GroupedSplitLeakage(),
         SwallowedException(),
+        ArrayNoneComparison(),
         OversizedFile(),
         ComplexFunction(),
         DuplicatedPackage(),

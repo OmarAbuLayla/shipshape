@@ -31,7 +31,7 @@ Tests in the wrong place give false confidence. Reviewers look at what is tested
 
 ## How Shipshape spots it
 
-It looks at which modules the test files import. When half or more of the modules with 50 or more lines (and at least two of them) are never imported by any test, it lists them. Importing is a rough proxy: a module can be imported and still barely exercised. Run a coverage tool for the real numbers.
+It looks at which modules the test files import. When half or more of the modules with 10 or more lines of code (and at least two of them) are never imported by any test, it lists them. Importing is a rough proxy: a module can be imported and still barely exercised. Run a coverage tool for the real numbers.
 
 ## Read more
 

@@ -13,7 +13,7 @@ export function worstSeverity(values: (Severity | null | undefined)[]): Severity
 export function formatLocation(location: Location): string {
   if (location.path === ".") return "whole project";
   let text = location.path;
-  if (location.cell !== null) text += ` [cell ${location.cell}]`;
+  if (location.cell !== null) text += ` [code cell ${location.cell}]`;
   if (location.start_line !== null) text += `:${location.start_line}`;
   return text;
 }

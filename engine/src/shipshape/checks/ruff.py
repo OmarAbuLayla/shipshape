@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from shipshape.checks.base import Check, plural
+from shipshape.checks.correctness import array_none_comparisons
 from shipshape.models import Dimension, Finding, Location, Severity
 from shipshape.project import Project
 
@@ -156,7 +157,8 @@ class RuffCheck(Check):
             if rel.endswith(".py") and rel in texts:
                 filename = str(project.root / rel)
                 items += _ruff(["--stdin-filename", filename, "-"], texts[rel])
-        return self.translate(items, project.root)
+        findings = self.translate(items, project.root)
+        return _without_array_comparisons(findings, project)
 
     @staticmethod
     def translate(items: list[dict[str, object]], root: Path) -> list[Finding]:
@@ -195,6 +197,35 @@ class RuffCheck(Check):
                 )
             )
         return findings
+
+
+def _without_array_comparisons(findings: list[Finding], project: Project) -> list[Finding]:
+    """Leave out ``== None`` places that ``correctness.array-none-comparison`` reports."""
+    taken = {
+        (source.path, line)
+        for source in project.parsed
+        if source.tree is not None and not source.is_notebook
+        for line in array_none_comparisons(source.tree)
+    }
+    if not taken:
+        return findings
+    kept = []
+    for finding in findings:
+        if finding.check_id == RULES["E711"].check_id:
+            locations = [
+                loc for loc in finding.locations if (loc.path, loc.start_line) not in taken
+            ]
+            if not locations:
+                continue
+            if len(locations) != len(finding.locations):
+                files = len({loc.path for loc in locations})
+                message = (
+                    f"{plural(len(locations), 'place')} in {plural(files, 'file')}. "
+                    f"{RULES['E711'].explanation}"
+                )
+                finding = finding.model_copy(update={"locations": locations, "message": message})
+        kept.append(finding)
+    return kept
 
 
 def _ruff(arguments: list[str], stdin: str | None = None) -> list[dict[str, object]]:

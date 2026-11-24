@@ -11,7 +11,6 @@ from shipshape.project import Project, SourceFile
 
 NOT_MODULES = frozenset({"__init__.py", "__main__.py", "setup.py", "conftest.py"})
 MIN_MODULE_LINES = 10
-SUBSTANTIAL_MODULE_LINES = 50
 UNTESTED_SHARE = 0.5
 
 
@@ -51,7 +50,7 @@ class NoTests(Check):
 
 
 class UntestedModules(Check):
-    """Tests exist, but most substantial modules are never imported by them."""
+    """Tests exist, but most modules are never imported by them."""
 
     id: ClassVar[str] = "testing.untested-modules"
     title: ClassVar[str] = "Most modules have no tests"
@@ -60,7 +59,7 @@ class UntestedModules(Check):
     concept: ClassVar[str] = "Test coverage where it matters"
 
     def run(self, project: Project) -> list[Finding]:
-        """Compare substantial modules against the names imported by test files."""
+        """Compare modules of 10+ lines of code against the names imported by test files."""
         tests = [s for s in project.parsed if s.is_test]
         if not tests:
             return []
@@ -69,12 +68,12 @@ class UntestedModules(Check):
             assert test.tree is not None
             for name in imported_names(test.tree):
                 tokens.update(name.split("."))
-        modules = code_modules(project, SUBSTANTIAL_MODULE_LINES)
+        modules = code_modules(project)
         untested = [m for m in modules if m.stem not in tokens]
         if len(untested) < 2 or len(untested) / len(modules) < UNTESTED_SHARE:
             return []
         message = (
-            f"{len(untested)} of {len(modules)} larger modules are never imported by a test "
+            f"{len(untested)} of {len(modules)} modules are never imported by a test "
             f"({examples([m.path for m in untested])}). Bugs there are only found by users. "
             f"Add at least one test per module, starting with the ones that compute results."
         )

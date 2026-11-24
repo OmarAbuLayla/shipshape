@@ -30,12 +30,12 @@ class ExportFormat(StrEnum):
 
 
 def format_location(location: Location) -> str:
-    """``path:line`` or ``path [cell 2]:line``; ``whole project`` for project-wide findings."""
+    """``path:line`` or ``path [code cell 2]:line``; ``whole project`` for project-wide findings."""
     if location.path == ".":
         return "whole project"
     text = location.path
     if location.cell is not None:
-        text += f" [cell {location.cell}]"
+        text += f" [code cell {location.cell}]"
     if location.start_line is not None:
         text += f":{location.start_line}"
     return text

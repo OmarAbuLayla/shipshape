@@ -120,7 +120,7 @@ def report_text(report: Report, max_findings: int = DEFAULT_MAX_FINDINGS) -> str
     lines += [f"Note: {error}" for error in report.check_errors]
     lines += [
         "",
-        "Notebook locations read 'path [cell N]:line': N counts code cells only, from 1 "
+        "Notebook locations read 'path [code cell N]:line': N counts code cells only, from 1 "
         "(Markdown cells are skipped), and the line is within that cell. verify_fix only "
         "handles .py files.",
         "Nothing in the project was executed.",

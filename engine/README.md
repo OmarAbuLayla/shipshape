@@ -18,9 +18,10 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 |---|---|---|
 | Correctness | `correctness.grouped-split-leakage` | Sample-wise splits (`train_test_split`, `KFold`, `i % 5 == 4`) in files that also track subjects, patients, papers or similar, without a group-aware splitter |
 | | `correctness.swallowed-exception` | Bare `except:` and `except Exception: pass` without a comment explaining why |
+| | `correctness.array-none-comparison` | `== None` / `!= None` on a name that clearly holds a pandas or numpy object (assigned from `pd.`/`np.`, used with DataFrame methods, or merged): it crashes in an `if` |
 | Structure | `structure.oversized-file` | Files with 400+ (minor) or 700+ (major) lines of code |
 | | `structure.complex-function` | Cyclomatic complexity of 15 or more (radon) |
-| | `structure.duplicated-package` | The same package copied into several folders |
+| | `structure.duplicated-package` | The same package copied into several folders: same-named packages by file names, renamed copies (`data` / `data_old`) by content |
 | | `structure.import-cycle` | Modules that import each other at module level (lazy imports inside functions don't count) |
 | Reproducibility | `repro.hardcoded-path` | Absolute, machine-specific paths in string literals (test files are skipped) |
 | | `repro.missing-environment` | Third-party imports but no requirements/environment/pyproject file |
@@ -33,7 +34,7 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 | | `readability.missing-type-hints` | Most public functions unannotated |
 | | `readability.missing-docstrings` | Most public definitions of 8+ lines undocumented |
 | Testing | `testing.no-tests` | Two or more modules and no tests |
-| | `testing.untested-modules` | Most larger modules never imported by a test |
+| | `testing.untested-modules` | Most modules with 10+ lines of code never imported by a test |
 | (any) | `lint.*` | A curated set of 11 ruff rules (undefined names, mutable defaults, unused imports, ...) |
 
 Grouped issues become one finding with many locations, so a project with 100 prints gets one finding, not 100. Thresholds are constants at the top of each check module.

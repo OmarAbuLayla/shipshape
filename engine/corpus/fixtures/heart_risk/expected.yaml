@@ -1,0 +1,100 @@
+# The heart_risk test project (Shipshape's first plugin test): a seminar ML project
+# predicting heart-disease risk from repeated patient visits. Planted problems:
+# patient leakage in the split, a hard-coded key, a bare except, `labs == None` on a
+# DataFrame (crashes), a mutable default that is appended to, machine paths, no seeds,
+# an import cycle, loop closures, a star import, a renamed copy of the data package
+# (data_old) and a single small test.
+# Known blind spots, deliberately NOT expected: leakage through preprocessing fitted on
+# all rows (data/cleaning.py), the notebook's permutation split (cell 5), the `global`
+# cache without rebinding, and model.build() silently falling back to XGBoost.
+expected:
+  - {check: correctness.grouped-split-leakage, path: train.py, line: 25}
+  - {check: security.hardcoded-secret, path: settings.py, line: 6}
+  - {check: correctness.array-none-comparison, path: data/loading.py, line: 39}
+  - {check: correctness.array-none-comparison, path: data_old/loading.py, line: 39}
+  - {check: correctness.swallowed-exception, path: data/loading.py, line: 30}
+  - {check: correctness.swallowed-exception, path: data_old/loading.py, line: 30}
+  - {check: lint.mutable-default, path: data/loading.py, line: 12}
+  - {check: lint.mutable-default, path: data_old/loading.py, line: 12}
+  - {check: repro.hardcoded-path, path: notebooks/explore.ipynb, cell: 2, line: 1}
+  - {check: repro.hardcoded-path, path: report.py, line: 11}
+  - {check: repro.hardcoded-path, path: settings.py, line: 2}
+  - {check: repro.hardcoded-path, path: settings.py, line: 3}
+  - {check: repro.hardcoded-path, path: settings.py, line: 4}
+  - {check: repro.missing-seed, path: notebooks/explore.ipynb, cell: 5, line: 1}
+  - {check: repro.missing-seed, path: train.py, line: 25}
+  - {check: structure.duplicated-package, path: data}
+  - {check: structure.duplicated-package, path: data_old}
+  - {check: structure.import-cycle, path: model.py, line: 6}
+  - {check: structure.import-cycle, path: train.py, line: 8}
+  - {check: lint.loop-closure, path: features.py, line: 16}
+  - {check: lint.bool-comparison, path: data/cleaning.py, line: 6}
+  - {check: lint.bool-comparison, path: data_old/cleaning.py, line: 6}
+  - {check: lint.star-import, path: features.py, line: 1}
+  - {check: lint.unused-import, path: data/cleaning.py, line: 1}
+  - {check: lint.unused-import, path: data/loading.py, line: 1}
+  - {check: lint.unused-import, path: data/loading.py, line: 2}
+  - {check: lint.unused-import, path: data/loading.py, line: 3}
+  - {check: lint.unused-import, path: data/loading.py, line: 5}
+  - {check: lint.unused-import, path: data_old/cleaning.py, line: 1}
+  - {check: lint.unused-import, path: data_old/loading.py, line: 1}
+  - {check: lint.unused-import, path: data_old/loading.py, line: 2}
+  - {check: lint.unused-import, path: data_old/loading.py, line: 3}
+  - {check: lint.unused-import, path: data_old/loading.py, line: 5}
+  - {check: lint.unused-import, path: features.py, line: 2}
+  - {check: lint.unused-import, path: model.py, line: 1}
+  - {check: lint.unused-import, path: train.py, line: 4}
+  - {check: lint.unused-variable, path: features.py, line: 9}
+  - {check: readability.missing-docstrings, path: data/cleaning.py, line: 5}
+  - {check: readability.missing-docstrings, path: data/loading.py, line: 12}
+  - {check: readability.missing-docstrings, path: data/loading.py, line: 24}
+  - {check: readability.missing-docstrings, path: data/loading.py, line: 37}
+  - {check: readability.missing-docstrings, path: data_old/cleaning.py, line: 5}
+  - {check: readability.missing-docstrings, path: data_old/loading.py, line: 12}
+  - {check: readability.missing-docstrings, path: data_old/loading.py, line: 24}
+  - {check: readability.missing-docstrings, path: data_old/loading.py, line: 37}
+  - {check: readability.missing-docstrings, path: train.py, line: 17}
+  - {check: readability.missing-type-hints, path: data/cleaning.py, line: 5}
+  - {check: readability.missing-type-hints, path: data/loading.py, line: 12}
+  - {check: readability.missing-type-hints, path: data/loading.py, line: 24}
+  - {check: readability.missing-type-hints, path: data/loading.py, line: 37}
+  - {check: readability.missing-type-hints, path: data_old/cleaning.py, line: 5}
+  - {check: readability.missing-type-hints, path: data_old/loading.py, line: 12}
+  - {check: readability.missing-type-hints, path: data_old/loading.py, line: 24}
+  - {check: readability.missing-type-hints, path: data_old/loading.py, line: 37}
+  - {check: readability.missing-type-hints, path: features.py, line: 5}
+  - {check: readability.missing-type-hints, path: features.py, line: 13}
+  - {check: readability.missing-type-hints, path: model.py, line: 9}
+  - {check: readability.missing-type-hints, path: report.py, line: 7}
+  - {check: readability.missing-type-hints, path: report.py, line: 14}
+  - {check: readability.missing-type-hints, path: train.py, line: 17}
+  - {check: readability.print-debugging, path: data/cleaning.py, line: 35}
+  - {check: readability.print-debugging, path: data/loading.py, line: 14}
+  - {check: readability.print-debugging, path: data/loading.py, line: 19}
+  - {check: readability.print-debugging, path: data/loading.py, line: 33}
+  - {check: readability.print-debugging, path: data/loading.py, line: 44}
+  - {check: readability.print-debugging, path: data/loading.py, line: 40}
+  - {check: readability.print-debugging, path: data_old/cleaning.py, line: 35}
+  - {check: readability.print-debugging, path: data_old/loading.py, line: 14}
+  - {check: readability.print-debugging, path: data_old/loading.py, line: 19}
+  - {check: readability.print-debugging, path: data_old/loading.py, line: 33}
+  - {check: readability.print-debugging, path: data_old/loading.py, line: 44}
+  - {check: readability.print-debugging, path: data_old/loading.py, line: 40}
+  - {check: readability.print-debugging, path: train.py, line: 29}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 1}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 2}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 3}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 4}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 5}
+  - {check: repro.unpinned-dependencies, path: requirements.txt, line: 6}
+  - {check: lint.too-many-arguments, path: data/cleaning.py, line: 5}
+  - {check: lint.too-many-arguments, path: data_old/cleaning.py, line: 5}
+  - {check: structure.complex-function, path: data/cleaning.py, line: 5}
+  - {check: structure.complex-function, path: data_old/cleaning.py, line: 5}
+  - {check: testing.untested-modules, path: data/cleaning.py}
+  - {check: testing.untested-modules, path: data/loading.py}
+  - {check: testing.untested-modules, path: data_old/cleaning.py}
+  - {check: testing.untested-modules, path: data_old/loading.py}
+  - {check: testing.untested-modules, path: model.py}
+  - {check: testing.untested-modules, path: report.py}
+  - {check: testing.untested-modules, path: train.py}

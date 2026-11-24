@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
+from difflib import SequenceMatcher
 from itertools import pairwise
 from pathlib import PurePosixPath
 from typing import Any, ClassVar
@@ -24,6 +25,7 @@ COMPLEXITY_LIMIT = 15  # cyclomatic complexity
 COMPLEXITY_MAJOR = 25
 DUPLICATE_OVERLAP = 0.6
 DUPLICATE_MIN_FILES = 3
+DUPLICATE_SIMILARITY = 0.8  # share of matching lines for a renamed copy
 
 
 class OversizedFile(Check):
@@ -135,7 +137,12 @@ class ComplexFunction(Check):
 
 
 class DuplicatedPackage(Check):
-    """The same package copied into several folders, a stand-in for version control."""
+    """The same package copied into several folders, a stand-in for version control.
+
+    Packages with the same folder name are compared by their file names. Packages with
+    different names (``data`` and ``data_old``) are compared by content as well, so a renamed
+    copy is found without flagging unrelated packages that happen to share file names.
+    """
 
     id: ClassVar[str] = "structure.duplicated-package"
     title: ClassVar[str] = "Same package copied in several places"
@@ -144,48 +151,91 @@ class DuplicatedPackage(Check):
     concept: ClassVar[str] = "Version control instead of copies"
 
     def run(self, project: Project) -> list[Finding]:
-        """Compare same-named packages by the overlap of their file lists."""
-        packages: dict[str, list[str]] = defaultdict(list)
-        for rel in project.files:
-            path = PurePosixPath(rel)
-            if path.name == "__init__.py" and len(path.parts) > 1:
-                packages[path.parent.name].append(path.parent.as_posix())
-
+        """Compare every pair of packages; report each copied pair once (outermost first)."""
+        dirs = sorted(
+            {
+                PurePosixPath(rel).parent.as_posix()
+                for rel in project.files
+                if PurePosixPath(rel).name == "__init__.py" and "/" in rel
+            },
+            key=lambda d: (d.count("/"), d),
+        )
+        contents = {
+            d: {f[len(d) + 1 :] for f in project.files if f.startswith(d + "/")} for d in dirs
+        }
+        texts = {s.path: s.text for s in project.sources}
         reported: list[tuple[str, str]] = []
         findings = []
-        for name, dirs in sorted(packages.items(), key=lambda item: min(map(len, item[1]))):
-            contents = {
-                d: {f[len(d) + 1 :] for f in project.files if f.startswith(d + "/")} for d in dirs
-            }
-            for i, first in enumerate(dirs):
-                for second in dirs[i + 1 :]:
-                    if any(
-                        first.startswith(a + "/") and second.startswith(b + "/")
-                        for a, b in reported
-                    ):
-                        continue
-                    union = contents[first] | contents[second]
-                    if len(union) < DUPLICATE_MIN_FILES:
-                        continue
-                    overlap = len(contents[first] & contents[second]) / len(union)
-                    if overlap < DUPLICATE_OVERLAP:
-                        continue
-                    reported.append((first, second))
-                    message = (
-                        f"The package `{name}` exists in two places (`{first}` and `{second}`) "
-                        f"and {overlap:.0%} of their files have the same names. Copies drift "
-                        f"apart silently: a bug fixed in one stays in the other, and nobody "
-                        f"knows which is current. Keep one copy under git and use branches "
-                        f"or configuration for the variants."
-                    )
-                    findings.append(
-                        self.finding(
-                            message,
-                            [Location(path=first), Location(path=second)],
-                            evidence=f"{overlap:.0%} file overlap",
-                        )
-                    )
+        for i, first in enumerate(dirs):
+            for second in dirs[i + 1 :]:
+                if _nested(first, second) or any(
+                    _inside(first, a) and _inside(second, b) for a, b in reported
+                ):
+                    continue
+                overlap = _package_overlap(first, second, contents, texts)
+                if overlap is None:
+                    continue
+                reported.append((first, second))
+                findings.append(self._finding(first, second, overlap))
         return findings
+
+    def _finding(self, first: str, second: str, overlap: float) -> Finding:
+        name_a, name_b = PurePosixPath(first).name, PurePosixPath(second).name
+        if name_a == name_b:
+            what = (
+                f"The package `{name_a}` exists in two places (`{first}` and `{second}`) and "
+                f"{overlap:.0%} of their files have the same names."
+            )
+            evidence = f"{overlap:.0%} file overlap"
+        else:
+            what = (
+                f"`{first}` and `{second}` are copies of each other under different names: "
+                f"{overlap:.0%} of their files are the same or nearly the same."
+            )
+            evidence = f"{overlap:.0%} of files (nearly) identical"
+        message = (
+            f"{what} Copies drift apart silently: a bug fixed in one stays in the other, and "
+            f"nobody knows which is current. Keep one copy under git and use branches or "
+            f"configuration for the variants; if one copy is unused, delete it."
+        )
+        return self.finding(
+            message, [Location(path=first), Location(path=second)], evidence=evidence
+        )
+
+
+def _inside(path: str, folder: str) -> bool:
+    return path == folder or path.startswith(folder + "/")
+
+
+def _nested(first: str, second: str) -> bool:
+    return _inside(first, second) or _inside(second, first)
+
+
+def _similar(a: str, b: str) -> bool:
+    """Same text, or nearly: at least DUPLICATE_SIMILARITY of the lines match."""
+    if a == b:
+        return True
+    return SequenceMatcher(None, a.splitlines(), b.splitlines()).ratio() >= DUPLICATE_SIMILARITY
+
+
+def _package_overlap(
+    first: str, second: str, contents: dict[str, set[str]], texts: dict[str, str]
+) -> float | None:
+    """Share of files the two packages have in common, or ``None`` if they are not copies."""
+    union = contents[first] | contents[second]
+    if len(union) < DUPLICATE_MIN_FILES:
+        return None
+    shared = contents[first] & contents[second]
+    if PurePosixPath(first).name != PurePosixPath(second).name:
+        shared = {
+            f
+            for f in shared
+            if f"{first}/{f}" in texts
+            and f"{second}/{f}" in texts
+            and _similar(texts[f"{first}/{f}"], texts[f"{second}/{f}"])
+        }
+    overlap = len(shared) / len(union)
+    return overlap if overlap >= DUPLICATE_OVERLAP else None
 
 
 def strongly_connected(adjacency: dict[str, set[str]]) -> list[list[str]]:
