@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "shipshape": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/OmarAbuLayla/shipshape#subdirectory=engine",
+        "shipshape-mcp"
+      ]
+    }
+  }
+}

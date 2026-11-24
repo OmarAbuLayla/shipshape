@@ -1,0 +1,14 @@
+{
+  "name": "shipshape",
+  "description": "Shipshape for Claude Code: review, fix and learn from vibe-coded Python projects.",
+  "owner": { "name": "Omar Abulayla" },
+  "plugins": [
+    {
+      "name": "shipshape",
+      "source": "./plugin",
+      "description": "Review vibe-coded Python projects with deterministic checks, verified fixes and lessons.",
+      "category": "development",
+      "tags": ["python", "code-review", "research"]
+    }
+  ]
+}

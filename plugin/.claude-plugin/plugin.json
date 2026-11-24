@@ -1,0 +1,10 @@
+{
+  "name": "shipshape",
+  "version": "0.1.0",
+  "description": "Review vibe-coded Python projects like a careful senior engineer: deterministic findings and a grade, explanations in your own code, fixes applied only after Shipshape verified them, and lessons on the concepts behind them.",
+  "author": { "name": "Omar Abulayla" },
+  "homepage": "https://github.com/OmarAbuLayla/shipshape",
+  "repository": "https://github.com/OmarAbuLayla/shipshape",
+  "license": "MIT",
+  "keywords": ["python", "code-review", "research", "reproducibility", "data-leakage", "teaching"]
+}
