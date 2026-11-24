@@ -11,6 +11,7 @@ license = { text = "MIT" }
 requires-python = ">=3.11"
 authors = [{ name = "Omar Abulayla" }]
 dependencies = [
+    "mcp>=2.3,<3",
     "openai>=1.40",
     "pydantic>=2.7",
     "python-dotenv>=1.0",
@@ -32,6 +33,7 @@ dev = [
 
 [project.scripts]
 shipshape = "shipshape.cli:app"
+shipshape-mcp = "shipshape.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/shipshape"]
