@@ -13,6 +13,22 @@ Requires [uv](https://docs.astral.sh/uv/) (the engine is fetched and run with `u
 /plugin install shipshape --marketplace OmarAbuLayla/shipshape
 ```
 
+### If the server times out on first start
+
+The first start downloads and builds the engine with `uvx`, which can take longer than Claude
+Code's default 30 seconds for an MCP server. Claude Code then skips the server for 15 minutes.
+Two ways around it:
+
+- Build it once in a terminal: run
+  `uvx --from "git+https://github.com/OmarAbuLayla/shipshape#subdirectory=engine" shipshape-mcp`,
+  wait until it sits silently (the server is running), stop it with Ctrl+C, then restart Claude
+  Code. Later starts take about 10 seconds.
+- Or give MCP servers more time: add `"env": { "MCP_TIMEOUT": "120000" }` to
+  `~/.claude/settings.json` (two minutes).
+
+The plugin follows the repository's `main` branch, so the first start after an update builds
+the engine again.
+
 ## Use
 
 | Skill | What it does |

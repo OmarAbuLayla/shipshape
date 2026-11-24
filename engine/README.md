@@ -80,8 +80,8 @@ The same limit as before applies: Shipshape never runs code, so a verified fix i
 
 | Tool | What it does |
 |---|---|
-| `scan(path, max_findings=50)` | The report as compact text: grade, scores, and each finding with its check id, locations, message and lesson |
-| `verify_fix(path, check_id, edits)` | Runs the fix gates above on the assistant's own search/replace edits, in memory: PASSED, or REJECTED with the reason |
+| `scan(path, max_findings=50)` | The report as compact text: grade, each score with the findings that lowered it and how the grade is computed, and each finding with its check id, locations, message and lesson |
+| `verify_fix(path, check_id, edits)` | Runs the fix gates above on the assistant's own edits (an exact search text, or whole lines by number so a secret never has to be quoted), in memory: PASSED, naming any places the problem is still reported in other files, or REJECTED with the reason |
 | `lesson(name)` | A lesson by slug, concept or check id; empty lists them all |
 | `map(path, output)` | Writes the standalone map page, by default to the temporary folder |
 

@@ -9,16 +9,20 @@ the scanned project; the assistant applies a fix only after :func:`verify_edits`
 from __future__ import annotations
 
 import tempfile
+from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
+
+from pydantic import BaseModel, Field
 
 from shipshape.analyzer import analyze_project
 from shipshape.export import describe_exclusions, format_location
 from shipshape.lessons import all_lessons, find_lesson
 from shipshape.llm.context import FindingContext, Redactions
 from shipshape.llm.validate import FixRejectedError, validate_fix
-from shipshape.models import Dimension, Edit, Finding, Report
+from shipshape.models import Dimension, Edit, Finding, Report, Severity
 from shipshape.project import Project
+from shipshape.scoring import GRADES, PENALTY
 from shipshape.viewer import render_map_html
 
 DEFAULT_MAX_FINDINGS = 50
@@ -27,6 +31,20 @@ MAX_LOCATIONS_SHOWN = 12
 
 class AssistError(ValueError):
     """A request the tools cannot serve; the message tells the assistant what to do instead."""
+
+
+class ProposedEdit(BaseModel):
+    """One edit from the assistant: replace a unique search text, or whole lines by number.
+
+    Line numbers let an edit replace a line without quoting it, so a secret never has to be
+    repeated. They refer to the file as it is on disk now, counted from 1.
+    """
+
+    path: str = Field(description="Path of a .py file, relative to the project folder.")
+    replace: str = Field(description="The new text.")
+    search: str = Field(default="", description="Exact text to replace; unique in the file.")
+    line: int | None = Field(default=None, ge=1, description="First line to replace instead.")
+    end_line: int | None = Field(default=None, ge=1, description="Last line (default: line).")
 
 
 def load_project(path: str) -> Project:
@@ -54,15 +72,39 @@ def _finding_lines(number: int, finding: Finding) -> list[str]:
     return lines
 
 
+def _score_lines(report: Report) -> list[str]:
+    """Each dimension's score with the findings that lowered it, and how the grade is made."""
+    lines = ["Scores (0-100), each starting at 100:"]
+    for dimension in Dimension:
+        counts = Counter(f.severity for f in report.findings if f.dimension is dimension)
+        parts = [
+            f"{counts[severity]} {severity.value} -{counts[severity] * PENALTY[severity]}"
+            for severity in Severity
+            if counts[severity]
+        ]
+        lost = sum(counts[severity] * PENALTY[severity] for severity in Severity)
+        floor = ", capped at 0" if lost > 100 else ""
+        reason = f" ({', '.join(parts)}{floor})" if parts else " (no findings)"
+        lines.append(f"- {dimension.value} {report.scores.get(dimension, 100)}{reason}")
+    penalties = ", ".join(f"{s.value} -{points}" for s, points in PENALTY.items())
+    grades = ", ".join(f"{letter} from {limit}" for limit, letter in GRADES)
+    lines.append(
+        f"How the grade works: every finding costs its dimension a fixed amount ({penalties}), "
+        f"however many places it covers; the grade comes from the average of the six scores "
+        f"({grades}, E below). A dimension with no findings scores 100 even if it is thin "
+        "(one small test is enough for testing), so read scores together with the findings."
+    )
+    return lines
+
+
 def report_text(report: Report, max_findings: int = DEFAULT_MAX_FINDINGS) -> str:
     """A compact, plain-text report for an assistant to read and explain."""
     s = report.stats
-    scores = ", ".join(f"{d.value} {report.scores.get(d, 100)}" for d in Dimension)
     lines = [
         f"Shipshape report for {report.project_name}: grade {report.grade} (rough guide).",
         f"{s.python_files} Python files, {s.notebooks} notebooks, {s.lines_of_code} lines of "
         f"code, {len(report.findings)} findings.",
-        f"Scores (0-100): {scores}.",
+        *_score_lines(report),
     ]
     excluded = describe_exclusions(report.exclusions)
     if excluded:
@@ -78,7 +120,9 @@ def report_text(report: Report, max_findings: int = DEFAULT_MAX_FINDINGS) -> str
     lines += [f"Note: {error}" for error in report.check_errors]
     lines += [
         "",
-        "Locations in notebooks are shown as [cell N]; verify_fix only handles .py files.",
+        "Notebook locations read 'path [cell N]:line': N counts code cells only, from 1 "
+        "(Markdown cells are skipped), and the line is within that cell. verify_fix only "
+        "handles .py files.",
         "Nothing in the project was executed.",
     ]
     return "\n".join(lines)
@@ -101,7 +145,44 @@ def _context(project: Project, findings: Iterable[Finding]) -> FindingContext:
     return FindingContext("", tuple(sorted(python)), located, Redactions())
 
 
-def verify_edits(path: str, check_id: str, edits: list[Edit]) -> str:
+def _as_edit(project: Project, number: int, proposed: ProposedEdit) -> Edit:
+    """Turn a proposed edit into a search/replace edit, reading line-based ones from disk."""
+    path = proposed.path.replace("\\", "/")
+    if proposed.line is None:
+        if proposed.end_line is not None:
+            raise AssistError(f"Edit {number} has end_line but no line.")
+        return Edit(path=path, search=proposed.search, replace=proposed.replace)
+    if proposed.search:
+        raise AssistError(f"Edit {number}: give either search or line numbers, not both.")
+    source = next((s for s in project.python_files if s.path == path), None)
+    if source is None:
+        raise AssistError(f"Edit {number}: {path} is not a Python file of this project.")
+    lines = source.text.splitlines(keepends=True)
+    end = proposed.end_line or proposed.line
+    if end < proposed.line or end > len(lines):
+        raise AssistError(f"Edit {number}: lines {proposed.line}-{end} are outside {path}.")
+    search = "".join(lines[proposed.line - 1 : end])
+    replace = proposed.replace
+    if search.endswith("\n") and replace and not replace.endswith("\n"):
+        replace += "\n"  # whole lines were replaced; keep the line break the assistant left out
+    return Edit(path=path, search=search, replace=replace)
+
+
+def _elsewhere(findings: list[Finding], touched: set[str]) -> str:
+    """Where the problem is still reported outside the edited files, for the PASSED message."""
+    places = [
+        format_location(loc)
+        for finding in findings
+        for loc in finding.locations
+        if loc.path not in touched
+    ]
+    if not places:
+        return ""
+    shown = ", ".join(places[:8]) + (f" and {len(places) - 8} more" if len(places) > 8 else "")
+    return f" It is still reported elsewhere, untouched by these edits: {shown}."
+
+
+def verify_edits(path: str, check_id: str, edits: list[ProposedEdit]) -> str:
     """Run the fix gates on ``edits`` for the problem ``check_id`` reports, in memory only.
 
     Passing means: every search text appears exactly once, every edited file still parses,
@@ -115,13 +196,14 @@ def verify_edits(path: str, check_id: str, edits: list[Edit]) -> str:
         raise AssistError(
             f"The current scan has no {check_id} finding. It may be fixed already; scan again."
         )
-    edits = [edit.model_copy(update={"path": edit.path.replace("\\", "/")}) for edit in edits]
-    validated = validate_fix(project, _context(project, matching), matching[0], edits)
-    files = ", ".join(sorted(validated.new_texts))
+    resolved = [_as_edit(project, n, edit) for n, edit in enumerate(edits, start=1)]
+    validated = validate_fix(project, _context(project, matching), matching[0], resolved)
+    touched = set(validated.new_texts)
     return (
-        f"PASSED. The edits remove {check_id} from {files} without new problems. Apply exactly "
-        "these edits now, then run the project's tests if it has any: Shipshape never runs "
-        "code, so it cannot prove the behaviour is unchanged."
+        f"PASSED. The edits remove {check_id} from {', '.join(sorted(touched))} without new "
+        f"problems.{_elsewhere(matching, touched)} Apply exactly these edits now, then run the "
+        "project's tests if it has any: Shipshape never runs code, so it cannot prove the "
+        "behaviour is unchanged."
     )
 
 
@@ -156,6 +238,7 @@ def write_map(path: str, output: str = "") -> Path:
 __all__ = [
     "AssistError",
     "FixRejectedError",
+    "ProposedEdit",
     "lesson",
     "report_text",
     "scan",

@@ -109,7 +109,7 @@ The checks are static heuristics tuned on a small corpus: the leakage check reco
 
 ## Status
 
-Phases 0 to 6 of 8 are done: analysis engine, architecture map, explanations with verified fixes, the web app, applying fixes, and function blocks, lessons and a profile, plus the Claude Code plugin (7.1). Next is testing with students and researchers, who can pick the web app or the plugin. See the [roadmap](docs/ROADMAP.md).
+Done so far: analysis engine, architecture map, explanations with verified fixes, the web app, applying fixes, function blocks, lessons and a profile, and the Claude Code plugin. See the [roadmap](docs/ROADMAP.md).
 
 ## License
 

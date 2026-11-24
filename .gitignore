@@ -38,3 +38,6 @@ Thumbs.db
 # Local artefacts: brag launch-video output and the source bundle made for it
 brag-output*/
 /shipshape-brag-src.zip
+
+# Private planning notes, not for the public repo
+docs/private/

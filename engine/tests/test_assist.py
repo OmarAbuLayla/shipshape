@@ -10,7 +10,6 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from shipshape import assist
 from shipshape.mcp_server import server
-from shipshape.models import Edit
 
 from .conftest import MakeProject
 
@@ -51,7 +50,7 @@ def test_scan_rejects_a_missing_folder(tmp_path: Path) -> None:
 
 def test_verify_passes_a_real_fix_and_changes_nothing(make_project: MakeProject) -> None:
     project = make_project({"pkg/lib.py": LINT})
-    edits = [Edit(path="pkg\\lib.py", search=LINT, replace=FIXED)]
+    edits = [assist.ProposedEdit(path="pkg\\lib.py", search=LINT, replace=FIXED)]
     message = assist.verify_edits(str(project.root), "lint.mutable-default", edits)
     assert message.startswith("PASSED")
     assert (project.root / "pkg" / "lib.py").read_text(encoding="utf-8") == LINT
@@ -59,17 +58,19 @@ def test_verify_passes_a_real_fix_and_changes_nothing(make_project: MakeProject)
 
 def test_verify_rejects_a_fix_that_leaves_the_problem(make_project: MakeProject) -> None:
     project = make_project({"lib.py": LINT})
-    edits = [Edit(path="lib.py", search="return bucket", replace="return list(bucket)")]
+    edits = [
+        assist.ProposedEdit(path="lib.py", search="return bucket", replace="return list(bucket)")
+    ]
     with pytest.raises(assist.FixRejectedError, match="still reported"):
         assist.verify_edits(str(project.root), "lint.mutable-default", edits)
 
 
 def test_verify_rejects_broken_code_and_unknown_search(make_project: MakeProject) -> None:
     project = make_project({"lib.py": LINT})
-    broken = [Edit(path="lib.py", search=LINT, replace="def collect(:\n")]
+    broken = [assist.ProposedEdit(path="lib.py", search=LINT, replace="def collect(:\n")]
     with pytest.raises(assist.FixRejectedError, match="no longer parses"):
         assist.verify_edits(str(project.root), "lint.mutable-default", broken)
-    missing = [Edit(path="lib.py", search="not there", replace="x")]
+    missing = [assist.ProposedEdit(path="lib.py", search="not there", replace="x")]
     with pytest.raises(assist.FixRejectedError, match="does not appear"):
         assist.verify_edits(str(project.root), "lint.mutable-default", missing)
 
@@ -115,3 +116,42 @@ def test_server_reports_rejections_as_text_and_bad_paths_as_errors(
     assert text.startswith("REJECTED")
     with pytest.raises(ToolError, match="not a folder"):
         _call("scan", {"path": str(project.root / "missing")})
+
+
+def test_line_edits_replace_whole_lines_without_quoting_them(make_project: MakeProject) -> None:
+    project = make_project({"lib.py": LINT})
+    edits = [
+        assist.ProposedEdit(
+            path="lib.py",
+            line=1,
+            replace="def collect(item, bucket=None):\n    bucket = bucket or []",
+        )
+    ]
+    message = assist.verify_edits(str(project.root), "lint.mutable-default", edits)
+    assert message.startswith("PASSED")
+
+
+def test_line_edits_outside_the_file_are_refused(make_project: MakeProject) -> None:
+    project = make_project({"lib.py": LINT})
+    edits = [assist.ProposedEdit(path="lib.py", line=2, end_line=9, replace="x")]
+    with pytest.raises(assist.AssistError, match="outside"):
+        assist.verify_edits(str(project.root), "lint.mutable-default", edits)
+    both = [assist.ProposedEdit(path="lib.py", line=1, search="def", replace="x")]
+    with pytest.raises(assist.AssistError, match="not both"):
+        assist.verify_edits(str(project.root), "lint.mutable-default", both)
+
+
+def test_passed_names_places_left_in_other_files(make_project: MakeProject) -> None:
+    project = make_project({"a.py": LINT, "copy/b.py": LINT})
+    edits = [assist.ProposedEdit(path="a.py", search=LINT, replace=FIXED)]
+    message = assist.verify_edits(str(project.root), "lint.mutable-default", edits)
+    assert "still reported elsewhere" in message
+    assert "copy/b.py:1" in message
+
+
+def test_scan_explains_scores_and_notebook_cells(make_project: MakeProject) -> None:
+    project = make_project({"lib.py": LINT})
+    text = assist.scan(str(project.root))
+    assert "1 major -15" in text
+    assert "How the grade works" in text
+    assert "counts code cells only" in text
