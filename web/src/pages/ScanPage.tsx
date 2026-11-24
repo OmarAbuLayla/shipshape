@@ -9,15 +9,14 @@ const Review = lazy(() => import("../review/Review").then((m) => ({ default: m.R
 
 export function ScanPage() {
   const { id = "" } = useParams();
+  // A new id gets a fresh component, so nothing from the previous scan lingers.
+  return <ScanView key={id} id={id} />;
+}
+
+function ScanView({ id }: { id: string }) {
   const [scan, setScan] = useState<ScanSummary | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setScan(null);
-    setReport(null);
-    setError(null);
-  }, [id]);
 
   usePoll(
     async () => {
@@ -61,7 +60,7 @@ export function ScanPage() {
 
 function Progress({ scan }: { scan: ScanSummary | null }) {
   const [started] = useState(() => Date.now());
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);

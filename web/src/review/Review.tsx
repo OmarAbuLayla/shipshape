@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api } from "../lib/api";
@@ -28,7 +28,7 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
   const [expanded, setExpanded] = useState<Set<string>>(() => (graph ? defaultExpanded(graph) : new Set()));
   const [showTests] = useState(true);
   const [selected, setSelected] = useState<number | null>(null); // start on the overview
-  const [selectedBox, setSelectedBox] = useState<string | null>(null);
+  const [chosenBox, setSelectedBox] = useState<string | null>(null);
   const [dimension, setDimension] = useState<Dimension | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   // Zoomed into one file: its blocks and code replace the map.
@@ -80,10 +80,8 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
     });
   }, []);
 
-  // If the selected box disappears (folder opened or closed), drop the box filter.
-  useEffect(() => {
-    if (selectedBox && view && !view.nodes.some((n) => n.id === selectedBox)) setSelectedBox(null);
-  }, [view, selectedBox]);
+  // A selected box that disappears (its folder was opened or closed) no longer filters anything.
+  const selectedBox = chosenBox && view?.nodes.some((n) => n.id === chosenBox) ? chosenBox : null;
 
   const highlighted = useMemo(
     () => (view && selected !== null ? boxesForFinding(view, selected) : new Set<string>()),

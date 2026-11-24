@@ -1,45 +1,55 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
 import type { Health } from "./types";
 
-/** Load something once, with loading and error state. */
+interface Loaded<T> {
+  key: string;
+  data: T | null;
+  error: string | null;
+}
+
+/** Load something whenever ``deps`` change (or on ``reload``), with loading and error state.
+ * Results are kept per ``deps``, so switching to other deps shows "loading" instead of old data,
+ * while a reload keeps showing the current data until the new answer arrives. */
 export function useLoad<T>(load: () => Promise<T>, deps: unknown[]) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const key = JSON.stringify(deps);
   const [version, setVersion] = useState(0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const stableLoad = useCallback(load, deps);
+  const [loaded, setLoaded] = useState<Loaded<T> | null>(null);
+  const latest = useRef(load);
+  useEffect(() => {
+    latest.current = load;
+  });
 
   useEffect(() => {
     let alive = true;
-    setError(null);
-    stableLoad()
-      .then((value) => alive && setData(value))
-      .catch((err: unknown) => alive && setError(err instanceof Error ? err.message : String(err)));
+    latest
+      .current()
+      .then((data) => alive && setLoaded({ key, data, error: null }))
+      .catch(
+        (err: unknown) => alive && setLoaded({ key, data: null, error: err instanceof Error ? err.message : String(err) }),
+      );
     return () => {
       alive = false;
     };
-  }, [stableLoad, version]);
+  }, [key, version]);
 
-  return { data, error, reload: () => setVersion((v) => v + 1) };
+  const current = loaded?.key === key ? loaded : null;
+  return { data: current?.data ?? null, error: current?.error ?? null, reload: () => setVersion((v) => v + 1) };
 }
 
 /** Call ``tick`` every ``ms`` until it returns true (done) or the component unmounts. */
 export function usePoll(tick: () => Promise<boolean>, ms: number, enabled: boolean) {
   const tickRef = useRef(tick);
-  tickRef.current = tick;
+  useEffect(() => {
+    tickRef.current = tick;
+  });
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
     let timer: number | undefined;
     const run = async () => {
-      let done = false;
-      try {
-        done = await tickRef.current();
-      } catch {
-        done = false;
-      }
+      const done = await tickRef.current().catch(() => false);
       if (alive && !done) timer = window.setTimeout(run, ms);
     };
     void run();

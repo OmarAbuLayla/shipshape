@@ -1,6 +1,5 @@
-/// <reference types="vitest" />
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 // In development the API runs separately (`shipshape-api`, port 8000) and Vite proxies /api.
 // In production `npm run build` writes web/dist, which the API serves itself.
