@@ -26,6 +26,7 @@ flowchart LR
 - **Fix.** Proposed fixes are only shown if, applied in memory, the code still parses, the problem is gone and no other check finds anything new. Tick the ones you want and press "Apply": they are applied one at a time to a copy, each verified again against the code the earlier ones left. A fix that collides with an earlier one is regenerated against the fixed code in a second round. The copy is scanned again and a before/after page shows the grade and every score, with a `git apply` patch or a fixed zip to download. Your files are never changed.
 - **Track.** A local profile shows which concepts keep coming up across your projects and which you have resolved, built only from your scan history.
 - **Export.** Findings, explanations and fixes as Markdown, JSON or CSV, with or without AI.
+- **Or inside Claude Code.** A plugin brings the checks, the fix verification and the lessons into Claude Code, with Claude as the LLM, so no API key is needed.
 
 ## Shipshape reviewed itself
 
@@ -33,7 +34,7 @@ The first time Shipshape scanned its own repository, it found a bug in itself: i
 
 ## Privacy
 
-Everything runs on your machine. Without an LLM key nothing leaves it. With a key, only the finding and the code around it are sent for explanations; credentials are redacted first, `.env` files are never sent, and every run prints which provider receives the code and what it cost. With DeepSeek that is a server in China, so don't use AI explanations on code you may not share. Answers are cached, so unchanged code is never paid for twice.
+Everything runs on your machine. Without an LLM key nothing leaves it. With a key, only the finding and the code around it are sent for explanations; credentials are redacted first, `.env` files are never sent, and every run prints which provider receives the code and what it cost. With DeepSeek that is a server in China, so don't use AI explanations on code you may not share. Answers are cached, so unchanged code is never paid for twice. In the Claude Code plugin, the engine still runs locally, and your code is read by Claude under your own Claude plan, like any other code you open in Claude Code.
 
 ## Getting started
 
@@ -59,6 +60,18 @@ shipshape map path/to/project --html map.html     # quick standalone map
 shipshape lessons data-leakage                    # the lesson behind a check
 ```
 
+## In Claude Code
+
+Shipshape also runs as a [Claude Code](https://code.claude.com) plugin. Claude explains the findings and writes the fixes; Shipshape's engine runs locally as an MCP server and supplies the findings, the grade, the lessons, and a check every fix must pass before Claude applies it. It needs [uv](https://docs.astral.sh/uv/), nothing else: the engine is fetched and run with `uvx`.
+
+```
+/plugin install shipshape --marketplace OmarAbuLayla/shipshape
+```
+
+Then `/shipshape:review` explains what an engineer would object to, `/shipshape:fix` fixes findings with verified edits and scans again, and `/shipshape:lesson data-leakage` teaches a concept. The plugin has no interactive map, before/after page or profile, and its fixes change your real files (it asks you to commit first), while the web app always works on a copy. See the [plugin README](plugin/README.md).
+
+## Leaving things out
+
 To leave generated or example code out of the review, list it in a `.shipshapeignore` file (gitignore syntax); every report says what was left out. The [engine README](engine/README.md) lists every check and its limits, the [API README](api/README.md) the endpoints, and the [web README](web/README.md) the screens.
 
 ## How it is built
@@ -67,6 +80,7 @@ To leave generated or example code out of the review, list it in a `.shipshapeig
 |---|---|
 | `engine/` | Python 3.11, pydantic models, ruff and radon plus custom AST checks, an import resolver and graph builder, LLM layer (OpenAI-compatible API, JSON mode, redaction, in-memory fix verification, cache), typer CLI |
 | `api/` | FastAPI, background scan workers, SQLite history, safe zip uploads, serves the built web app; binds to 127.0.0.1 only |
+| `plugin/` | Claude Code plugin: three skills (review, fix, lesson) and the MCP server config; the engine's `shipshape-mcp` serves `scan`, `verify_fix`, `lesson` and `map` over stdio |
 | `web/` | React 18 and TypeScript, React Flow with ELK layout for the map and block views, Vite |
 | `docs/` | [Roadmap](docs/ROADMAP.md) and the [fixture corpus](docs/corpus.md) used to measure the checks |
 
@@ -87,7 +101,7 @@ The checks are static heuristics tuned on a small corpus: the leakage check reco
 
 ## Status
 
-Phases 0 to 6 of 8 are done: analysis engine, architecture map, explanations with verified fixes, the web app, applying fixes, and function blocks, lessons and a profile. Next is testing with students and researchers. See the [roadmap](docs/ROADMAP.md).
+Phases 0 to 6 of 8 are done: analysis engine, architecture map, explanations with verified fixes, the web app, applying fixes, and function blocks, lessons and a profile, plus the Claude Code plugin (7.1). Next is testing with students and researchers, who can pick the web app or the plugin. See the [roadmap](docs/ROADMAP.md).
 
 ## License
 

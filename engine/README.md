@@ -74,6 +74,19 @@ shipshape fix path/to/project --only repro.hardcoded-path   # only some checks
 
 The same limit as before applies: Shipshape never runs code, so a verified fix is valid and removes the problem, but run your tests once after applying.
 
+## Inside a coding assistant (MCP)
+
+`shipshape-mcp` is an MCP server over stdio for Claude Code and other MCP clients; the [plugin](../plugin/README.md) starts it for you. In this mode the assistant is the LLM, and the server offers four tools:
+
+| Tool | What it does |
+|---|---|
+| `scan(path, max_findings=50)` | The report as compact text: grade, scores, and each finding with its check id, locations, message and lesson |
+| `verify_fix(path, check_id, edits)` | Runs the fix gates above on the assistant's own search/replace edits, in memory: PASSED, or REJECTED with the reason |
+| `lesson(name)` | A lesson by slug, concept or check id; empty lists them all |
+| `map(path, output)` | Writes the standalone map page, by default to the temporary folder |
+
+Since the assistant can read the whole project, its edits may touch any `.py` file, and the gate is stricter in return: in every edited file, every place the finding was reported must be gone. The server never writes to the project; the assistant applies a fix itself after it passed. Notebook cells cannot be verified.
+
 ## Architecture map
 
 Every report includes a `graph`: files, notebooks and folders as nodes, internal imports as edges, test files linked to what they test, hard-coded data paths as external nodes, and missing pieces (no tests, no environment file) as dashed ghost nodes. Each node lists the findings pinned to it. Imports are resolved the way projects are actually run: `src/` layouts, packages, relative imports and "import the file next to me" all work, and when two files share a name the closest one wins.
