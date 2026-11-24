@@ -207,3 +207,84 @@ def test_export_in_every_format(client: TestClient) -> None:
     assert as_json.json()["project_name"] == "leaky_emg"
     assert client.get(url, params={"format": "pdf"}).status_code == 422
     assert client.get("/api/scans/nope/export").status_code == 404
+
+
+TRAIN = 'import pandas as pd\n\nDATA = "C:/Users/me/data/raw.csv"\nframe = pd.read_csv(DATA)\n'
+
+
+class FixingClient(FakeClient):
+    """Proposes the same small edit for every finding; only the path finding accepts it."""
+
+    def complete(self, messages: Sequence[Message]) -> Completion:
+        edit = {
+            "path": "train.py",
+            "search": 'DATA = "C:/Users/me/data/raw.csv"',
+            "replace": 'DATA = "data/raw.csv"',
+        }
+        answer = {"summary": "s", "what": "w", "why": "y", "how_to_fix": "1. h", "edits": [edit]}
+        return Completion(json.dumps(answer), 100, 0, 50, 0.0)
+
+
+@pytest.fixture
+def fixing_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    monkeypatch.setenv("SHIPSHAPE_CACHE_DIR", str(tmp_path / "cache"))
+    with _client(tmp_path, FixingClient()) as test_client:
+        yield test_client
+
+
+def _path_finding(client: TestClient, scan_id: str) -> int:
+    report = client.get(f"/api/scans/{scan_id}/report").json()
+    (index,) = [
+        i
+        for i, f in enumerate(report["findings"])
+        if f["check_id"] == "repro.hardcoded-path" and f["explanation"]["fix_status"] == "verified"
+    ]
+    return index
+
+
+def test_apply_fixes_to_an_upload_and_download_them(fixing_client: TestClient) -> None:
+    response = fixing_client.post(
+        "/api/scans/upload",
+        files={"file": ("demo.zip", _zip({"demo/train.py": TRAIN}), "application/zip")},
+        data={"explain": "true"},
+    )
+    scan_id = _wait(fixing_client, response.json()["id"])["id"]
+    index = _path_finding(fixing_client, scan_id)
+
+    run = fixing_client.post(f"/api/scans/{scan_id}/fixes", json={"findings": [index]})
+
+    assert run.status_code == 200, run.text
+    body = run.json()
+    assert body["outcomes"][0]["applied"] is True
+    assert body["changed_files"] == ["train.py"]
+    assert body["after_scores"]["reproducibility"] > body["before_scores"]["reproducibility"]
+    assert body["zip_available"] is True
+    assert fixing_client.get(f"/api/scans/{scan_id}/fixes").json()["patch"] == body["patch"]
+    patch = fixing_client.get(f"/api/scans/{scan_id}/fixes/download?format=patch")
+    assert '+DATA = "data/raw.csv"' in patch.text
+    assert "demo-shipshape.patch" in patch.headers["content-disposition"]
+    fixed = fixing_client.get(f"/api/scans/{scan_id}/fixes/download?format=zip")
+    with zipfile.ZipFile(io.BytesIO(fixed.content)) as archive:
+        assert b'DATA = "data/raw.csv"' in archive.read("demo-fixed/train.py")
+
+
+def test_fixing_a_folder_never_changes_it(fixing_client: TestClient, tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "train.py").write_text(TRAIN, encoding="utf-8")
+    response = fixing_client.post("/api/scans", json={"path": str(project), "explain": True})
+    scan_id = _wait(fixing_client, response.json()["id"])["id"]
+    index = _path_finding(fixing_client, scan_id)
+
+    run = fixing_client.post(f"/api/scans/{scan_id}/fixes", json={"findings": [index]})
+
+    assert run.json()["outcomes"][0]["applied"] is True
+    assert (project / "train.py").read_text(encoding="utf-8") == TRAIN
+
+
+def test_fixes_need_a_known_scan_and_finding(client: TestClient) -> None:
+    assert client.post("/api/scans/nope/fixes", json={"findings": [0]}).status_code == 404
+    assert client.get("/api/scans/nope/fixes").status_code == 404
+    response = client.post("/api/scans", json={"path": str(FIXTURES / "leaky_emg")})
+    scan_id = _wait(client, response.json()["id"])["id"]
+    assert client.post(f"/api/scans/{scan_id}/fixes", json={"findings": [999]}).status_code == 409

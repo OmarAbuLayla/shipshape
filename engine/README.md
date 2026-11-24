@@ -57,6 +57,18 @@ With `--explain`, the most severe findings (15 by default, `--max-findings` to c
 
 What leaves your machine: the finding and the code around it (the enclosing function plus the top of the file). Credentials are replaced with `<REDACTED_n>` before sending, `.env` files are never sent, and the run prints which provider receives the code. With DeepSeek that is a server in China; don't use `--explain` on code you may not share. Answers are cached in `~/.shipshape/cache`, so unchanged code is never paid for twice, and every run ends with its API calls, tokens and estimated cost. `shipshape explain-eval corpus/fixtures` runs the real model over the whole corpus and reports fix rates per check (this costs money).
 
+## Applying fixes
+
+```bash
+shipshape fix path/to/project --patch fixes.patch   # then, inside the project: git apply fixes.patch
+shipshape fix path/to/project --zip fixed.zip       # or a fixed copy of the whole project
+shipshape fix path/to/project --only repro.hardcoded-path   # only some checks
+```
+
+`fix` explains the findings (like `--explain`), applies every verified fix to an in-memory copy, and scans the copy again, printing scores before and after. Fixes are applied one at a time, and each one is verified again against the code as the earlier fixes left it. Two fixes for the same lines would otherwise collide; a fix that no longer fits is skipped with the reason, never forced, and a fresh scan of the fixed code gives a new one. The project folder is never changed, and the patch and zip must be written outside it. The web app offers the same: tick the fixes you want, press "Apply fixes", and download the patch or the fixed project.
+
+The same limit as before applies: Shipshape never runs code, so a verified fix is valid and removes the problem, but run your tests once after applying.
+
 ## Architecture map
 
 Every report includes a `graph`: files, notebooks and folders as nodes, internal imports as edges, test files linked to what they test, hard-coded data paths as external nodes, and missing pieces (no tests, no environment file) as dashed ghost nodes. Each node lists the findings pinned to it. Imports are resolved the way projects are actually run: `src/` layouts, packages, relative imports and "import the file next to me" all work, and when two files share a name the closest one wins.

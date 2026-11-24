@@ -4,6 +4,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Moon, Sun } from "./components/icons";
 import { providerName } from "./lib/format";
 import { useHealth, useTheme } from "./lib/hooks";
+import { FixesPage } from "./pages/FixesPage";
 import { History } from "./pages/History";
 import { Home } from "./pages/Home";
 import { ScanPage } from "./pages/ScanPage";
@@ -54,6 +55,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Home llmReady={!!llm?.configured} llmLabel={llm ? providerName(llm.provider) : null} />} />
           <Route path="/scans/:id" element={<ScanPage />} />
+          <Route path="/scans/:id/fixes" element={<FixesPage />} />
           <Route path="/history" element={<History />} />
           <Route
             path="*"

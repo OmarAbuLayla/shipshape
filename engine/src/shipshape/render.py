@@ -10,7 +10,17 @@ from rich.text import Text
 
 from shipshape.evaluation import EvalResult
 from shipshape.export import describe_exclusions
-from shipshape.models import Dimension, EdgeKind, Edit, Location, NodeKind, Report, Severity
+from shipshape.models import (
+    Dimension,
+    EdgeKind,
+    Edit,
+    FixRun,
+    Location,
+    NodeKind,
+    ProjectGraph,
+    Report,
+    Severity,
+)
 
 SEVERITY_STYLE: dict[Severity, str] = {
     Severity.CRITICAL: "bold red",
@@ -166,37 +176,59 @@ def render_explain_eval(
     )
 
 
+def unused_library_modules(graph: ProjectGraph) -> list[str]:
+    """Library modules that no other module imports and no test covers (possible dead code).
+
+    Package ``__init__`` files are loaded implicitly, so "nothing imports them" means nothing.
+    """
+    used = {e.target for e in graph.edges if e.kind in (EdgeKind.IMPORT, EdgeKind.TEST)}
+    return [
+        n.id
+        for n in graph.nodes
+        if n.kind is NodeKind.MODULE
+        and n.role == "library"
+        and n.label != "__init__.py"
+        and n.id not in used
+    ]
+
+
+def _print_counts(graph: ProjectGraph, console: Console) -> None:
+    kinds = Counter(node.kind.value for node in graph.nodes)
+    edges = Counter(edge.kind.value for edge in graph.edges)
+    console.print("  Nodes: " + ", ".join(f"{c} {k}" for k, c in sorted(kinds.items())))
+    console.print("  Edges: " + (", ".join(f"{c} {k}" for k, c in sorted(edges.items())) or "none"))
+
+
+def _print_most_imported(graph: ProjectGraph, console: Console) -> None:
+    imported_by = Counter(e.target for e in graph.edges if e.kind is EdgeKind.IMPORT)
+    if not imported_by:
+        return
+    console.print("\n[bold]Most depended-on modules[/]")
+    for path, count in imported_by.most_common(5):
+        console.print(f"  {count:>3}  {path}")
+
+
+def _print_unused(graph: ProjectGraph, console: Console, limit: int = 10) -> None:
+    unused = unused_library_modules(graph)
+    if not unused:
+        return
+    console.print("\n[bold]Library modules nothing imports[/] [grey58](dead code?)[/]")
+    for path in unused[:limit]:
+        console.print(f"       {path}")
+    if len(unused) > limit:
+        console.print(f"       +{len(unused) - limit} more")
+
+
 def render_map_summary(report: Report, console: Console) -> None:
     """Print what the architecture map contains, for a quick look without a browser."""
     graph = report.graph
     if graph is None:
         console.print("[yellow]No map could be built.[/]")
         return
-    kinds = Counter(node.kind.value for node in graph.nodes)
-    edges = Counter(edge.kind.value for edge in graph.edges)
     console.print(f"[bold]{report.project_name}[/]  map")
-    console.print(
-        "  Nodes: " + ", ".join(f"{count} {kind}" for kind, count in sorted(kinds.items()))
-    )
-    console.print("  Edges: " + (", ".join(f"{c} {k}" for k, c in sorted(edges.items())) or "none"))
-
-    imported_by = Counter(e.target for e in graph.edges if e.kind is EdgeKind.IMPORT)
-    if imported_by:
-        console.print("\n[bold]Most depended-on modules[/]")
-        for path, count in imported_by.most_common(5):
-            console.print(f"  {count:>3}  {path}")
-
-    # Package __init__ files are loaded implicitly, so "nothing imports them" means nothing.
-    tested = {e.target for e in graph.edges if e.kind is EdgeKind.TEST}
-    tested |= {n.id for n in graph.nodes if n.label == "__init__.py"}
-    library = [n for n in graph.nodes if n.kind is NodeKind.MODULE and n.role == "library"]
-    unused = [n.id for n in library if n.id not in imported_by and n.id not in tested]
-    if unused:
-        console.print("\n[bold]Library modules nothing imports[/] [grey58](dead code?)[/]")
-        for path in unused[:10]:
-            console.print(f"       {path}")
-        if len(unused) > 10:
-            console.print(f"       +{len(unused) - 10} more")
+    _print_counts(graph, console)
+    _print_most_imported(graph, console)
+    _print_unused(graph, console)
     if graph.unresolved_imports:
         console.print(
             f"\n[grey58]{len(graph.unresolved_imports)} local-looking imports could not be "
@@ -230,3 +262,36 @@ def render_evaluation(result: EvalResult, console: Console) -> None:
         console.print(f"[yellow]Check failed:[/] {error}")
     if result.perfect:
         console.print("[green]Every expected issue found, no false positives.[/]")
+
+
+def render_fix_run(run: FixRun, report: Report, console: Console) -> None:
+    """Before/after scores, which fixes were applied or skipped, and what changed per check."""
+    console.print(
+        f"\n[bold]Applied {run.applied} of {len(run.outcomes)} fixes[/] "
+        f"to {plural_files(len(run.changed_files))}."
+    )
+    console.print(f"Grade: {run.before_grade} -> [bold]{run.after_grade}[/]")
+    table = Table(box=None, padding=(0, 1))
+    table.add_column("Dimension")
+    table.add_column("Before", justify="right")
+    table.add_column("After", justify="right")
+    for dimension in Dimension:
+        before = run.before_scores.get(dimension, 100)
+        after = run.after_scores.get(dimension, 100)
+        style = "green" if after > before else "red" if after < before else ""
+        table.add_row(dimension.value.capitalize(), str(before), Text(str(after), style=style))
+    console.print(table)
+    for outcome in run.outcomes:
+        if not outcome.applied:
+            console.print(f"[yellow]Skipped[/] {outcome.title}: {outcome.reason}", highlight=False)
+    for delta in run.deltas:
+        console.print(f"  {delta.title}: {delta.before} -> {delta.after} places", highlight=False)
+    console.print(
+        "[grey58]Verified means the code parses, the problem is gone and no check finds anything "
+        "new. Nothing was run, so test the changed code before relying on it.[/]"
+    )
+
+
+def plural_files(count: int) -> str:
+    """``1 file`` / ``3 files``."""
+    return f"{count} file" if count == 1 else f"{count} files"

@@ -18,6 +18,7 @@ from shipshape.analyzer import analyze_project
 from shipshape.checks import RULES, default_checks
 from shipshape.evaluation import case_root, evaluate, load_corpus, load_manifest
 from shipshape.export import export, format_for_path
+from shipshape.fixes import apply_fixes, fixable, project_zip
 from shipshape.llm.cache import ExplanationCache
 from shipshape.llm.client import FatalLLMError, LLMError, OpenAICompatibleClient, ping
 from shipshape.llm.explain import DEFAULT_MAX_FINDINGS, explain_report
@@ -27,6 +28,7 @@ from shipshape.project import Project
 from shipshape.render import (
     render_evaluation,
     render_explain_eval,
+    render_fix_run,
     render_map_summary,
     render_report,
 )
@@ -71,6 +73,13 @@ NoCacheOption = Annotated[
 
 def _scan(path: Path, explain: bool, max_findings: int, no_cache: bool) -> Report:
     """Analyse ``path`` and, if asked, add LLM explanations. Exits on user-facing errors."""
+    return _scan_project(path, explain, max_findings, no_cache)[1]
+
+
+def _scan_project(
+    path: Path, explain: bool, max_findings: int, no_cache: bool
+) -> tuple[Project, Report]:
+    """Like :func:`_scan`, also returning the loaded project."""
     try:
         project = Project.load(path)
     except NotADirectoryError as exc:
@@ -78,7 +87,7 @@ def _scan(path: Path, explain: bool, max_findings: int, no_cache: bool) -> Repor
         raise typer.Exit(code=2) from exc
     report = analyze_project(project)
     if not explain or not report.findings:
-        return report
+        return project, report
     try:
         settings = load_settings()
         client = OpenAICompatibleClient(settings)
@@ -104,7 +113,7 @@ def _scan(path: Path, explain: bool, max_findings: int, no_cache: bool) -> Repor
     except FatalLLMError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    return report
+    return project, report
 
 
 @app.command()
@@ -150,6 +159,56 @@ def analyze(
             typer.echo(f"\nJSON report written to {output}")
         if export_to is not None:
             typer.echo(f"\nFindings exported to {export_to}")
+
+
+@app.command("fix")
+def fix(
+    path: Annotated[Path, typer.Argument(help="Project folder to fix.")],
+    patch: Annotated[
+        Path | None, typer.Option("--patch", help="Write the fixes as a patch for `git apply`.")
+    ] = None,
+    zip_to: Annotated[
+        Path | None, typer.Option("--zip", help="Write a fixed copy of the project as a zip.")
+    ] = None,
+    only: Annotated[
+        list[str] | None,
+        typer.Option("--only", help="Only fix findings of this check id (repeatable)."),
+    ] = None,
+    max_findings: MaxFindingsOption = DEFAULT_MAX_FINDINGS,
+    no_cache: NoCacheOption = False,
+) -> None:
+    """Explain findings, apply every verified fix to a copy, and scan the result again.
+
+    The project folder itself is never changed. Without --patch or --zip, this only shows
+    what the fixes would change.
+    """
+    for target in (patch, zip_to):
+        if target is not None and target.resolve().is_relative_to(path.resolve()):
+            typer.echo(f"Error: write {target} outside the project folder.", err=True)
+            raise typer.Exit(code=2)
+    project, report = _scan_project(path, True, max_findings, no_cache)
+    chosen = [
+        i
+        for i, finding in enumerate(report.findings)
+        if fixable(finding) and (not only or finding.check_id in only)
+    ]
+    if not chosen:
+        typer.echo("No verified fixes to apply.")
+        return
+    result = apply_fixes(project, report, chosen)
+    render_fix_run(result.run, report, Console())
+    if patch is not None and result.texts:
+        patch.write_text(result.run.patch, encoding="utf-8", newline="\n")
+        typer.echo(f"\nPatch written to {patch} (apply with: git apply {patch.name})")
+    if zip_to is not None and result.texts:
+        try:
+            zip_to.write_bytes(project_zip(project.root, result.texts, f"{project.name}-fixed"))
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f"\nFixed copy written to {zip_to}")
+    if patch is None and zip_to is None:
+        typer.echo("\nNothing was written. Use --patch or --zip to save the fixes.")
 
 
 @app.command("map")

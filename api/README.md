@@ -17,6 +17,11 @@ Run it from the repository root so it finds the `.env` file with your LLM settin
 | GET | `/api/scans/{id}` | Status and progress of one scan |
 | GET | `/api/scans/{id}/report` | The full report (findings, graph, explanations) |
 | GET | `/api/scans/{id}/export?format=md` | Download the findings as Markdown (`md`), `json` or `csv` |
-| DELETE | `/api/scans/{id}` | Forget a scan |
+| POST | `/api/scans/{id}/fixes` | Apply verified fixes to a copy and scan it again: `{"findings": [0, 3]}` |
+| GET | `/api/scans/{id}/fixes` | The last fix run: scores before and after, applied and skipped fixes, the patch |
+| GET | `/api/scans/{id}/fixes/download?format=patch` | The fixes as a patch for `git apply`, or `zip` for the fixed project |
+| DELETE | `/api/scans/{id}` | Forget a scan (and every file kept for it) |
+
+Applying fixes never changes the scanned folder or upload. Folder scans are fixed from the folder as it is now, so fixes for code you changed since the scan are skipped with a reason. Uploads are fixed from the original zip, which is kept in the data folder (`~/.shipshape/api/uploads`) until you delete the scan.
 
 Uploaded code is unpacked into a temporary folder and deleted when the scan finishes. Zips are checked before extraction: no absolute paths, no `..`, no links, and size and file-count limits.

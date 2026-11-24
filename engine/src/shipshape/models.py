@@ -165,6 +165,46 @@ class Report(BaseModel):
     exclusions: Exclusions = Field(default_factory=Exclusions)
 
 
+class FixOutcome(BaseModel):
+    """What happened to one fix the user asked to apply."""
+
+    finding: int  # index into the original report's findings
+    check_id: str
+    title: str
+    applied: bool
+    reason: str = ""  # why it was skipped
+
+
+class CheckDelta(BaseModel):
+    """How many places one check flags, before and after applying fixes."""
+
+    check_id: str
+    title: str
+    before: int
+    after: int
+
+
+class FixRun(BaseModel):
+    """Result of applying fixes to an in-memory copy of a project and scanning it again.
+
+    Nothing is written to the project. ``patch`` is a unified diff that ``git apply`` accepts.
+    """
+
+    outcomes: list[FixOutcome] = Field(default_factory=list)
+    changed_files: list[str] = Field(default_factory=list)
+    before_grade: str
+    after_grade: str
+    before_scores: dict[Dimension, int] = Field(default_factory=dict)
+    after_scores: dict[Dimension, int] = Field(default_factory=dict)
+    deltas: list[CheckDelta] = Field(default_factory=list)
+    patch: str = ""
+
+    @property
+    def applied(self) -> int:
+        """Number of fixes applied."""
+        return sum(o.applied for o in self.outcomes)
+
+
 class NodeKind(StrEnum):
     """What a map node stands for."""
 

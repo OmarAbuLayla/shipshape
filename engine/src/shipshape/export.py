@@ -49,8 +49,7 @@ def describe_exclusions(exclusions: Exclusions) -> list[str]:
         patterns = ", ".join(f"`{p}`" for p in exclusions.patterns[:6])
         more = ", ..." if len(exclusions.patterns) > 6 else ""
         lines.append(
-            f"{exclusions.files_excluded} {files} left out by .shipshapeignore "
-            f"({patterns}{more})."
+            f"{exclusions.files_excluded} {files} left out by .shipshapeignore ({patterns}{more})."
         )
     if exclusions.disabled_checks:
         names = ", ".join(f"`{c}`" for c in exclusions.disabled_checks)

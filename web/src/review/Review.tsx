@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
+import { api } from "../lib/api";
 
 import { exclusionLines, formatWhen, plural, scoreColor } from "../lib/format";
 import { boxesForFinding, buildViewGraph, defaultExpanded, findingsOfBox } from "../lib/graphModel";
 import { DIMENSIONS, type Dimension, type Report, type ScanSummary } from "../lib/types";
-import { DetailPanel } from "./DetailPanel";
+import { DetailPanel, hasVerifiedFix } from "./DetailPanel";
 import { IssueList } from "./IssueList";
 import { ExportMenu } from "./ExportMenu";
 import { MapView, type FocusRequest } from "./MapView";
@@ -26,6 +28,34 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
   const [selectedBox, setSelectedBox] = useState<string | null>(null);
   const [dimension, setDimension] = useState<Dimension | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
+  const fixable = useMemo(
+    () => report.findings.flatMap((f, i) => (hasVerifiedFix(f) ? [i] : [])),
+    [report.findings],
+  );
+  // Every verified fix starts selected; untick the ones you don't want.
+  const [chosen, setChosen] = useState<Set<number>>(() => new Set(fixable));
+  const [applying, setApplying] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const toggleFix = (index: number) =>
+    setChosen((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  const applyFixes = async () => {
+    setApplying(true);
+    setFixError(null);
+    try {
+      await api.applyFixes(scan.id, [...chosen].sort((a, b) => a - b));
+      navigate(`/scans/${scan.id}/fixes`);
+    } catch (err) {
+      setFixError(err instanceof Error ? err.message : String(err));
+      setApplying(false);
+    }
+  };
 
   const view = useMemo(
     () => (graph ? buildViewGraph(graph, report.findings, { expanded, showTests }) : null),
@@ -104,10 +134,21 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
           })}
         </div>
         <div className="actions">
+          {fixable.length > 0 && (
+            <button
+              className="btn primary small"
+              onClick={applyFixes}
+              disabled={applying || chosen.size === 0}
+              title="Apply the selected verified fixes to a copy and scan it again. Your files are not changed."
+            >
+              {applying ? "Applying fixes..." : `Apply ${plural(chosen.size, "fix", "fixes")}`}
+            </button>
+          )}
           <ExportMenu scanId={scan.id} />
           <Link className="btn small" to="/">New scan</Link>
         </div>
       </header>
+      {fixError && <div className="notice fix-error">Couldn't apply the fixes: {fixError}</div>}
 
       <div className="workspace">
         <IssueList
@@ -136,6 +177,8 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
           report={report}
           selected={selected}
           box={box}
+          chosen={chosen}
+          onToggleFix={toggleFix}
           onSelect={(i) => {
             setSelected(i);
           }}

@@ -98,6 +98,7 @@ class Project:
     files: tuple[str, ...]
     ignore: IgnoreRules = field(default_factory=IgnoreRules)
     excluded: tuple[str, ...] = ()  # files left out by .shipshapeignore patterns
+    overrides: frozenset[str] = frozenset()  # files changed in memory, not on disk
 
     @property
     def name(self) -> str:
@@ -145,7 +146,7 @@ class Project:
             else s
             for s in self.sources
         )
-        return replace(self, sources=sources)
+        return replace(self, sources=sources, overrides=self.overrides | set(texts))
 
     @classmethod
     def load(cls, root: Path) -> Project:

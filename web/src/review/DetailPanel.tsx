@@ -10,14 +10,27 @@ interface Props {
   box: ViewNode | null;
   onSelect: (index: number) => void;
   onLocate: (path: string) => void;
+  chosen: Set<number>;
+  onToggleFix: (index: number) => void;
 }
 
-export function DetailPanel({ report, selected, box, onSelect, onLocate }: Props) {
+/** True if the finding has a fix that passed every check. */
+export function hasVerifiedFix(finding: Finding): boolean {
+  return finding.explanation?.fix_status === "verified" && finding.explanation.edits.length > 0;
+}
+
+export function DetailPanel({ report, selected, box, onSelect, onLocate, chosen, onToggleFix }: Props) {
   const finding = selected === null ? null : report.findings[selected];
   return (
     <aside className="col detail" aria-label="Details">
       {finding ? (
-        <FindingDetail finding={finding} number={(selected ?? 0) + 1} onLocate={onLocate} />
+        <FindingDetail
+          finding={finding}
+          number={(selected ?? 0) + 1}
+          onLocate={onLocate}
+          included={chosen.has(selected ?? -1)}
+          onToggleFix={() => selected !== null && onToggleFix(selected)}
+        />
       ) : box ? (
         <BoxDetail box={box} report={report} onSelect={onSelect} />
       ) : (
@@ -39,7 +52,15 @@ function Paragraphs({ text }: { text: string }) {
   );
 }
 
-function FindingDetail({ finding, number, onLocate }: { finding: Finding; number: number; onLocate: (p: string) => void }) {
+interface FindingDetailProps {
+  finding: Finding;
+  number: number;
+  onLocate: (p: string) => void;
+  included: boolean;
+  onToggleFix: () => void;
+}
+
+function FindingDetail({ finding, number, onLocate, included, onToggleFix }: FindingDetailProps) {
   const x = finding.explanation;
   return (
     <>
@@ -87,6 +108,10 @@ function FindingDetail({ finding, number, onLocate }: { finding: Finding; number
                   <span><b>Heads-up.</b> {x.behaviour_change}</span>
                 </div>
               )}
+              <label className="include-fix">
+                <input type="checkbox" checked={included} onChange={onToggleFix} />
+                <span>Include this fix when applying fixes</span>
+              </label>
               <div className="verified-note" style={{ marginTop: 6 }}>
                 <Check />
                 <span>

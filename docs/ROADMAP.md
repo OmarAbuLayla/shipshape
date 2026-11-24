@@ -2,13 +2,15 @@
 
 Every phase ends with something that can be demonstrated on its own.
 
-Status: Phases 0 to 4 are done. Real run of Phase 3 with prompt version 2026-11-24.2 (deepseek-flash, fixture corpus, November 2026): 23 findings explained with 24 API calls (1 retry, 0 failures), about 970 input tokens (64% served from DeepSeek's prefix cache) and 870 output tokens per call, about $0.028 in total at peak prices, 135 s wall time (calls run one after another, about 5-6 s each). Every fix proposed for a Python file passed validation (11 of 11); notebook findings are explanation-only by design. The tightened prompt made explanations about 26% shorter and adds a "heads-up" when a fix changes visible behaviour.
+Status: Phases 0 to 5 are done; Phase 6 is next. Real run of Phase 3 with prompt version 2026-11-24.2 (deepseek-flash, fixture corpus, November 2026): 23 findings explained with 24 API calls (1 retry, 0 failures), about 970 input tokens (64% served from DeepSeek's prefix cache) and 870 output tokens per call, about $0.028 in total at peak prices, 135 s wall time (calls run one after another, about 5-6 s each). Every fix proposed for a Python file passed validation (11 of 11); notebook findings are explanation-only by design. The tightened prompt made explanations about 26% shorter and adds a "heads-up" when a fix changes visible behaviour.
 
 Phase 4: local API (background scans, SQLite history, safe zip uploads, serves the app) and the React review app (start, progress, review with issue list, architecture map and explanation panel, history; light and dark). Explanation calls run in parallel (9 findings: 14 s instead of about 50 s).
 
+After Phase 4: the brand kit, exports (JSON, Markdown, CSV, with or without AI), `.shipshapeignore` files and inline `# shipshape: ignore` comments (everything left out is listed in every report; the scoring formula is unchanged), and gentler handling of test files. Shipshape now reviews itself: the first self-scan found a bug in the complexity check (every method was counted twice), and its two most complex functions (`render_map_summary`, 25, and `build_graph`, 23) were split up on its advice. Self-scan: grade A, Structure 90, with the deliberately broken corpus fixtures excluded.
+
 Open follow-ups: development-only npm advisories (Vite dev server, Vitest, ESLint internals) need major upgrades of the build tools; the runtime dependencies have none. Very large projects stay readable by fitting at no less than 60% zoom rather than showing everything at once.
 
-Known follow-up for Phase 5: fixes are generated per finding, so two fixes can touch the same line (for example the leakage split and the missing seed). Applying several fixes must happen one at a time, re-validating each against the already-changed code.
+Phase 5: verified fixes are applied together, one at a time, each verified again against the code the earlier fixes left (on the leaky EMG fixture the leakage fix and the seed fix touch the same lines: 5 of 6 fixes apply, the seed fix is skipped with the reason, grade B to A). The copy is scanned again; the result downloads as a `git apply` patch or a fixed zip, from the CLI (`shipshape fix`) and the web app. The scanned project is never changed. Later: GitHub pull requests, and a second round that regenerates skipped fixes against the fixed code.
 
 | Phase | Goal | Demo at the end |
 |---|---|---|

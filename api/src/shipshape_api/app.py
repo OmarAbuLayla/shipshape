@@ -22,7 +22,8 @@ from shipshape.llm.explain import DEFAULT_MAX_FINDINGS
 from shipshape.llm.settings import SettingsError, load_settings
 from shipshape.models import Report
 
-from shipshape_api import __version__
+from shipshape_api import __version__, fixes
+from shipshape_api.fixes import FixRequest, FixRunResponse
 from shipshape_api.jobs import ClientFactory, ScanJob, ScanRunner, default_client_factory
 from shipshape_api.store import ScanStore, ScanSummary
 from shipshape_api.uploads import CHUNK, UploadError, extract_project, save_stream
@@ -125,7 +126,9 @@ def create_app(
         if not root.is_dir():
             raise HTTPException(400, f"Not a folder on this machine: {request.path}")
         scan_id = uuid.uuid4().hex[:12]
-        summary = store.create(scan_id, root.resolve().name, "path", request.explain)
+        summary = store.create(
+            scan_id, root.resolve().name, "path", request.explain, str(root.resolve())
+        )
         runner.submit(ScanJob(scan_id, root.resolve(), request.explain, request.max_findings))
         return summary
 
@@ -141,12 +144,13 @@ def create_app(
             archive = workdir / "upload.zip"
             save_stream(iter(lambda: file.file.read(CHUNK), b""), archive)
             root = extract_project(archive, workdir / "project")
-            archive.unlink()
         except UploadError as exc:
             shutil.rmtree(workdir, ignore_errors=True)
             raise HTTPException(400, str(exc)) from exc
         name = Path(file.filename or "upload").stem if root == workdir / "project" else root.name
         scan_id = uuid.uuid4().hex[:12]
+        # Keep the original zip so verified fixes can be applied to it later.
+        fixes.keep_upload(data_dir, scan_id, archive)
         summary = store.create(scan_id, name, "upload", explain)
         runner.submit(ScanJob(scan_id, root, explain, max_findings, cleanup=workdir))
         return summary
@@ -191,11 +195,67 @@ def create_app(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
+    @app.post("/api/scans/{scan_id}/fixes")
+    def apply_fixes(scan_id: str, request: FixRequest) -> FixRunResponse:
+        """Apply the chosen verified fixes to a copy, scan it again, and keep the result.
+
+        The scanned folder (or uploaded zip) is never changed.
+        """
+        summary = store.get(scan_id)
+        if summary is None:
+            raise HTTPException(404, "No such scan.")
+        raw = store.report(scan_id)
+        if raw is None:
+            raise HTTPException(409, "The report is not ready.")
+        try:
+            result = fixes.run(
+                data_dir,
+                summary,
+                store.root(scan_id),
+                Report.model_validate_json(raw),
+                request.findings,
+            )
+        except fixes.FixUnavailableError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        store.save_fixes(scan_id, result.model_dump_json())
+        return result
+
+    @app.get("/api/scans/{scan_id}/fixes")
+    def last_fixes(scan_id: str) -> FixRunResponse:
+        """The last fix run of this scan (404 if fixes were never applied)."""
+        raw = store.fixes(scan_id)
+        if raw is None:
+            raise HTTPException(404, "No fixes applied to this scan yet.")
+        return FixRunResponse.model_validate_json(raw)
+
+    @app.get("/api/scans/{scan_id}/fixes/download")
+    def download_fixes(scan_id: str, format: fixes.DownloadFormat) -> Response:
+        """The last fix run as a ``.patch`` file or a zip of the fixed project."""
+        summary = store.get(scan_id)
+        raw = store.fixes(scan_id)
+        if summary is None or raw is None:
+            raise HTTPException(404, "No fixes applied to this scan yet.")
+        name = _safe_name(summary.name)
+        if format is fixes.DownloadFormat.PATCH:
+            body = FixRunResponse.model_validate_json(raw).patch.encode("utf-8")
+            media, filename = "text/x-diff; charset=utf-8", f"{name}-shipshape.patch"
+        else:
+            path = fixes.zip_path(data_dir, scan_id)
+            if not path.is_file():
+                raise HTTPException(404, "No zip for this fix run; download the patch instead.")
+            body, media, filename = path.read_bytes(), "application/zip", f"{name}-fixed.zip"
+        return Response(
+            body,
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     @app.delete("/api/scans/{scan_id}", status_code=204)
     def delete_scan(scan_id: str) -> None:
         """Forget a scan."""
         if not store.delete(scan_id):
             raise HTTPException(404, "No such scan.")
+        fixes.forget(data_dir, scan_id)
 
     dist = (web_dist or REPO_ROOT / "web" / "dist").resolve()
     if (dist / "index.html").is_file():

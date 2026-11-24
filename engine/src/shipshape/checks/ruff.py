@@ -141,29 +141,22 @@ class RuffCheck(Check):
     concept: ClassVar[str] = "Linting"
 
     def run(self, project: Project) -> list[Finding]:
-        """Run ruff with the curated rules; notebooks are skipped (handled by other checks)."""
-        command = [
-            sys.executable,
-            "-m",
-            "ruff",
-            "check",
-            "--isolated",
-            "--no-cache",
-            "--exit-zero",
-            "--output-format",
-            "json",
-            "--select",
-            ",".join(RULES),
-            "--extend-exclude",
-            "*.ipynb,build,env",
-            str(project.root),
+        """Run ruff with the curated rules; notebooks are skipped (handled by other checks).
+
+        Files changed in memory (``project.overrides``, e.g. after applying fixes) are checked
+        from their new text instead of the copy on disk.
+        """
+        items = [
+            item
+            for item in _ruff([str(project.root)])
+            if _relative(item, project.root) not in project.overrides
         ]
-        result = subprocess.run(
-            command, capture_output=True, text=True, encoding="utf-8", timeout=300, check=False
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"ruff failed: {result.stderr.strip()[:300]}")
-        return self.translate(json.loads(result.stdout or "[]"), project.root)
+        texts = {s.path: s.text for s in project.sources}
+        for rel in sorted(project.overrides):
+            if rel.endswith(".py") and rel in texts:
+                filename = str(project.root / rel)
+                items += _ruff(["--stdin-filename", filename, "-"], texts[rel])
+        return self.translate(items, project.root)
 
     @staticmethod
     def translate(items: list[dict[str, object]], root: Path) -> list[Finding]:
@@ -202,3 +195,44 @@ class RuffCheck(Check):
                 )
             )
         return findings
+
+
+def _ruff(arguments: list[str], stdin: str | None = None) -> list[dict[str, object]]:
+    """Run ruff with the curated rules and return its JSON diagnostics."""
+    command = [
+        sys.executable,
+        "-m",
+        "ruff",
+        "check",
+        "--isolated",
+        "--no-cache",
+        "--exit-zero",
+        "--output-format",
+        "json",
+        "--select",
+        ",".join(RULES),
+        "--extend-exclude",
+        "*.ipynb,build,env",
+        *arguments,
+    ]
+    result = subprocess.run(
+        command,
+        input=stdin,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=300,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ruff failed: {result.stderr.strip()[:300]}")
+    items: list[dict[str, object]] = json.loads(result.stdout or "[]")
+    return items
+
+
+def _relative(item: dict[str, object], root: Path) -> str | None:
+    """Project-relative POSIX path of a diagnostic, or ``None`` if it lies outside."""
+    try:
+        return Path(str(item["filename"])).resolve().relative_to(root.resolve()).as_posix()
+    except (KeyError, ValueError):
+        return None

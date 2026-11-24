@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import threading
 from datetime import UTC, datetime
@@ -24,9 +25,14 @@ CREATE TABLE IF NOT EXISTS scans (
     finished_at TEXT,
     grade TEXT,
     findings INTEGER,
-    report TEXT
+    report TEXT,
+    root TEXT,
+    fixes TEXT
 )
 """
+
+
+COLUMNS_ADDED_LATER = ("root", "fixes")
 
 
 class ScanStatus(StrEnum):
@@ -68,6 +74,9 @@ class ScanStore:
         self._db.row_factory = sqlite3.Row
         with self._lock:
             self._db.execute(SCHEMA)
+            for column in COLUMNS_ADDED_LATER:  # databases created by older versions
+                with contextlib.suppress(sqlite3.OperationalError):  # the column exists already
+                    self._db.execute(f"ALTER TABLE scans ADD COLUMN {column} TEXT")
             # A server restart interrupts running jobs; don't leave them "running" forever.
             self._db.execute(
                 "UPDATE scans SET status = ?, error = ? WHERE status IN (?, ?)",
@@ -80,13 +89,15 @@ class ScanStore:
             )
             self._db.commit()
 
-    def create(self, scan_id: str, name: str, source: str, explain: bool) -> ScanSummary:
-        """Insert a new queued scan."""
+    def create(
+        self, scan_id: str, name: str, source: str, explain: bool, root: str | None = None
+    ) -> ScanSummary:
+        """Insert a new queued scan. ``root`` is the scanned folder for folder scans."""
         with self._lock:
             self._db.execute(
-                "INSERT INTO scans (id, name, source, explain, status, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (scan_id, name, source, int(explain), ScanStatus.QUEUED, _now()),
+                "INSERT INTO scans (id, name, source, explain, status, created_at, root) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (scan_id, name, source, int(explain), ScanStatus.QUEUED, _now(), root),
             )
             self._db.commit()
         summary = self.get(scan_id)
@@ -149,6 +160,27 @@ class ScanStore:
         with self._lock:
             row = self._db.execute("SELECT report FROM scans WHERE id = ?", (scan_id,)).fetchone()
         return row["report"] if row and row["report"] else None
+
+    def root(self, scan_id: str) -> str | None:
+        """The folder a folder scan read, or ``None`` (uploads, unknown scans)."""
+        return self._column(scan_id, "root")
+
+    def fixes(self, scan_id: str) -> str | None:
+        """The last fix run of this scan as JSON text, or ``None``."""
+        return self._column(scan_id, "fixes")
+
+    def save_fixes(self, scan_id: str, payload: str) -> None:
+        """Remember the latest fix run (replacing an earlier one)."""
+        with self._lock:
+            self._db.execute("UPDATE scans SET fixes = ? WHERE id = ?", (payload, scan_id))
+            self._db.commit()
+
+    def _column(self, scan_id: str, column: str) -> str | None:
+        with self._lock:
+            row = self._db.execute(
+                f"SELECT {column} FROM scans WHERE id = ?", (scan_id,)
+            ).fetchone()
+        return row[column] if row and row[column] else None
 
     def list(self, limit: int = 50) -> list[ScanSummary]:
         """Newest scans first."""

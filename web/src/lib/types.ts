@@ -135,6 +135,35 @@ export interface Report {
   exclusions?: Exclusions;
 }
 
+export interface FixOutcome {
+  finding: number;
+  check_id: string;
+  title: string;
+  applied: boolean;
+  reason: string;
+}
+
+export interface CheckDelta {
+  check_id: string;
+  title: string;
+  before: number;
+  after: number;
+}
+
+/** Mirrors the API's FixRunResponse. */
+export interface FixRun {
+  outcomes: FixOutcome[];
+  changed_files: string[];
+  before_grade: string;
+  after_grade: string;
+  before_scores: Partial<Record<Dimension, number>>;
+  after_scores: Partial<Record<Dimension, number>>;
+  deltas: CheckDelta[];
+  patch: string;
+  zip_available: boolean;
+  zip_note: string;
+}
+
 export type ScanStatus = "queued" | "running" | "done" | "failed";
 
 export interface ScanSummary {
