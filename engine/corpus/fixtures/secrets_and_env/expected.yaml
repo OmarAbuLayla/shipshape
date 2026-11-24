@@ -1,5 +1,9 @@
 # A key in the source and a .env file that git would commit.
 # The fake key deliberately matches no vendor format, so GitHub secret scanning stays quiet.
+# The .env file is created in a temporary copy at eval time, so the repository never
+# contains one (a committed .env would look careless, even with a fake value).
+setup_files:
+  .env: "API_KEY=placeholder-not-a-real-key\n"
 expected:
   - {check: security.hardcoded-secret, path: client.py, line: 7}
   - {check: security.env-file-not-ignored, path: .env}

@@ -14,6 +14,8 @@ from shipshape import __version__
 from shipshape.analyzer import analyze as run_analysis
 from shipshape.checks import RULES, default_checks
 from shipshape.evaluation import evaluate, load_corpus, load_manifest
+from shipshape.llm.client import LLMError, ping
+from shipshape.llm.settings import SettingsError, load_settings
 from shipshape.render import render_evaluation, render_map_summary, render_report
 from shipshape.viewer import render_map_html
 
@@ -123,6 +125,46 @@ def list_checks() -> None:
             f"{rule.check_id} ({code})", rule.dimension.value, rule.severity.value, rule.concept
         )
     Console().print(table)
+
+
+@app.command("llm-check")
+def llm_check(
+    send: Annotated[
+        bool,
+        typer.Option("--ping", help="Send one tiny test request (costs a fraction of a cent)."),
+    ] = False,
+) -> None:
+    """Show which LLM provider and model are configured, and whether a key is set."""
+    try:
+        settings = load_settings()
+    except SettingsError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if settings.env_file:
+        typer.echo(f"Settings: {settings.env_file}")
+    else:
+        typer.echo(
+            f"Settings: no .env found in {Path.cwd()} or its parent folders "
+            f"(run from the shipshape folder, or set the variables in your environment)"
+        )
+    typer.echo(f"Provider: {settings.provider}")
+    typer.echo(f"Model:    {settings.model}")
+    typer.echo(f"Endpoint: {settings.base_url}")
+    typer.echo(f"API key:  {settings.key_status()}")
+    if not settings.api_key:
+        raise typer.Exit(code=1)
+    if not send:
+        typer.echo("\nAdd --ping to send a test request.")
+        return
+    try:
+        result = ping(settings)
+    except (LLMError, SettingsError) as exc:
+        typer.echo(f"\nTest request failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(
+        f"\nTest request OK in {result.seconds:.1f}s: replied {result.reply!r} "
+        f"({result.input_tokens} tokens in, {result.output_tokens} out)."
+    )
 
 
 @app.command()

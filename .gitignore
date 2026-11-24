@@ -20,8 +20,6 @@ web/dist/
 .env
 .env.*
 !.env.example
-# Test fixture that must be committed: it is a fake .env the scanner should flag.
-!engine/corpus/fixtures/secrets_and_env/.env
 
 # Private labels for real projects (see docs/corpus.md)
 local/

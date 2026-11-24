@@ -16,6 +16,8 @@ manifest file with the same ``expected`` lists plus a ``root`` path.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,7 +25,7 @@ from pathlib import Path
 import yaml
 
 from shipshape.analyzer import analyze
-from shipshape.models import Location
+from shipshape.models import Location, Report
 
 EXPECTED_FILE = "expected.yaml"
 
@@ -59,6 +61,9 @@ class Case:
     name: str
     root: Path
     expected: tuple[Expected, ...]
+    # Files written into a temporary copy before scanning, for test data that must not
+    # live in the repository itself (such as a fake .env file).
+    setup_files: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -122,8 +127,16 @@ def load_corpus(corpus_dir: Path) -> list[Case]:
     cases = []
     for spec in sorted(corpus_dir.glob(f"*/{EXPECTED_FILE}")):
         data = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+        setup = data.get("setup_files") or {}
+        if not isinstance(setup, dict):
+            raise ValueError(f"{spec}: 'setup_files' must map file names to contents")
         cases.append(
-            Case(spec.parent.name, spec.parent, _parse_expected(data.get("expected"), spec))
+            Case(
+                spec.parent.name,
+                spec.parent,
+                _parse_expected(data.get("expected"), spec),
+                tuple((str(name), str(text)) for name, text in setup.items()),
+            )
         )
     return cases
 
@@ -141,11 +154,23 @@ def load_manifest(manifest: Path) -> list[Case]:
     return cases
 
 
+def _analyze_case(case: Case) -> Report:
+    """Scan the case, in a temporary copy with its setup files if it has any."""
+    if not case.setup_files:
+        return analyze(case.root)
+    with tempfile.TemporaryDirectory(prefix="shipshape-eval-") as tmp:
+        copy = Path(tmp) / case.root.name
+        shutil.copytree(case.root, copy)
+        for name, text in case.setup_files:
+            (copy / name).write_text(text, encoding="utf-8")
+        return analyze(copy)
+
+
 def evaluate(cases: list[Case]) -> EvalResult:
     """Analyse every case and score each check against its expected issues."""
     result = EvalResult()
     for case in cases:
-        report = analyze(case.root)
+        report = _analyze_case(case)
         result.errors.extend(f"{case.name}: {error}" for error in report.check_errors)
         matched: set[Expected] = set()
         for finding in report.findings:
