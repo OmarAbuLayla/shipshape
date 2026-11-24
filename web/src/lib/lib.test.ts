@@ -1,0 +1,120 @@
+import { describe, expect, it } from "vitest";
+
+import { formatLocation, splitSteps, worstSeverity } from "./format";
+import { boxesForFinding, buildViewGraph, defaultExpanded, findingsOfBox, folderId, groupId } from "./graphModel";
+import { highlightPython } from "./highlight";
+import { layoutGraph } from "./layout";
+import type { Finding, GraphNode, ProjectGraph } from "./types";
+
+function node(partial: Partial<GraphNode> & Pick<GraphNode, "id" | "kind">): GraphNode {
+  return {
+    label: partial.id.split("/").pop() ?? partial.id,
+    parent: null, role: "library", lines_of_code: 10, functions: 1, classes: 0,
+    max_complexity: 1, third_party: [], findings: [], worst_severity: null, ...partial,
+  };
+}
+
+function finding(severity: Finding["severity"], path: string): Finding {
+  return {
+    check_id: "x", title: "x", severity, dimension: "structure", concept: "c", message: "m",
+    locations: [{ path, start_line: 1, end_line: null, cell: null }], evidence: "", explanation: null,
+  };
+}
+
+const findings = [finding("critical", "pkg/a.py"), finding("minor", "pkg/b.py"), finding("major", ".")];
+
+const graph: ProjectGraph = {
+  nodes: [
+    node({ id: "pkg", kind: "folder", label: "pkg/" }),
+    node({ id: "main.py", kind: "module", role: "entry", findings: [] }),
+    node({ id: "pkg/a.py", kind: "module", parent: "pkg", findings: [0], worst_severity: "critical" }),
+    node({ id: "pkg/b.py", kind: "module", parent: "pkg", findings: [1], worst_severity: "minor" }),
+    node({ id: "pkg/__init__.py", kind: "module", parent: "pkg", label: "__init__.py" }),
+    node({ id: "tests/test_a.py", kind: "test", parent: "tests" }),
+    node({ id: "tests", kind: "folder" }),
+    node({ id: "missing:environment", kind: "missing", label: "environment.yml", findings: [2], worst_severity: "major" }),
+  ],
+  edges: [
+    { source: "main.py", target: "pkg/a.py", kind: "import", names: [], line: 1 },
+    { source: "main.py", target: "pkg/b.py", kind: "import", names: [], line: 2 },
+    { source: "pkg/a.py", target: "pkg/b.py", kind: "import", names: [], line: 1 },
+    { source: "tests/test_a.py", target: "pkg/a.py", kind: "test", names: [], line: 1 },
+  ],
+  project_findings: [],
+  unresolved_imports: [],
+};
+
+describe("buildViewGraph", () => {
+  it("collapses folders into one box and merges their edges", () => {
+    const view = buildViewGraph(graph, findings, { expanded: new Set(), showTests: true });
+    const pkg = view.nodes.find((n) => n.id === folderId("pkg"))!;
+
+    expect(pkg.members.sort()).toEqual(["pkg/a.py", "pkg/b.py"]); // empty __init__ is hidden
+    expect(pkg.severity).toBe("critical");
+    expect(pkg.findings).toEqual([0, 1]);
+    const fromMain = view.edges.find((e) => e.source === "main.py")!;
+    expect(fromMain).toMatchObject({ target: folderId("pkg"), count: 2 });
+    expect(view.edges.some((e) => e.source === folderId("pkg") && e.target === folderId("pkg"))).toBe(false);
+  });
+
+  it("shows files inside a container when a folder is expanded", () => {
+    const view = buildViewGraph(graph, findings, { expanded: new Set(["pkg"]), showTests: true });
+
+    expect(view.nodes[0]!.kind).toBe("group"); // containers come first
+    expect(view.nodes.find((n) => n.id === "pkg/a.py")!.parent).toBe(groupId("pkg"));
+    expect(view.edges.find((e) => e.source === "pkg/a.py")!.target).toBe("pkg/b.py");
+  });
+
+  it("can hide tests", () => {
+    const view = buildViewGraph(graph, findings, { expanded: new Set(), showTests: false });
+
+    expect(view.nodes.some((n) => n.id.includes("tests"))).toBe(false);
+  });
+
+  it("links findings and boxes both ways", () => {
+    const view = buildViewGraph(graph, findings, { expanded: new Set(), showTests: true });
+
+    expect([...boxesForFinding(view, 0)]).toEqual([folderId("pkg")]);
+    expect([...boxesForFinding(view, 2)]).toEqual(["missing:environment"]);
+    expect(findingsOfBox(view, folderId("pkg"))).toEqual([0, 1]);
+  });
+
+  it("expands everything for small projects", () => {
+    expect([...defaultExpanded(graph)].sort()).toEqual(["pkg", "tests"]);
+  });
+});
+
+describe("layoutGraph", () => {
+  it("positions every box, with children inside their container", async () => {
+    const view = buildViewGraph(graph, findings, { expanded: new Set(["pkg"]), showTests: true });
+
+    const { positions } = await layoutGraph(view);
+
+    for (const n of view.nodes) expect(positions.has(n.id)).toBe(true);
+    const group = positions.get(groupId("pkg"))!;
+    const child = positions.get("pkg/a.py")!;
+    expect(child.x + child.width).toBeLessThanOrEqual(group.width);
+  });
+});
+
+describe("helpers", () => {
+  it("highlights Python tokens", () => {
+    const kinds = highlightPython('x = load("a.csv")  # read').map((t) => t.kind);
+
+    expect(kinds).toContain("fn");
+    expect(kinds).toContain("str");
+    expect(kinds).toContain("com");
+    expect(highlightPython("from os import path")[0]).toEqual({ text: "from", kind: "kw" });
+  });
+
+  it("splits numbered steps", () => {
+    expect(splitSteps("1. Add x. 2. Remove y. 3. Run it.")).toEqual(["Add x.", "Remove y.", "Run it."]);
+    expect(splitSteps("Just do it.")).toEqual(["Just do it."]);
+  });
+
+  it("formats locations and picks the worst severity", () => {
+    expect(formatLocation({ path: "a.py", start_line: 3, end_line: null, cell: 2 })).toBe("a.py [cell 2]:3");
+    expect(formatLocation({ path: ".", start_line: null, end_line: null, cell: null })).toBe("whole project");
+    expect(worstSeverity(["minor", null, "major"])).toBe("major");
+  });
+});

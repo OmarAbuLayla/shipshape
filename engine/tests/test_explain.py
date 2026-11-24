@@ -270,3 +270,73 @@ def test_prompt_asks_for_short_problem_first_answers() -> None:
     assert "names the problem, not the fix" in SYSTEM_PROMPT
     assert "at most 3 short numbered steps" in SYSTEM_PROMPT
     assert '"behaviour_change"' in SYSTEM_PROMPT
+
+
+class SlowClient:
+    """Thread-safe fake: every call takes ``delay`` seconds and echoes the check id."""
+
+    model = "deepseek-flash"
+
+    def __init__(self, delay: float = 0.0, fail_with: Exception | None = None) -> None:
+        import threading
+
+        self.delay = delay
+        self.fail_with = fail_with
+        self.calls = 0
+        self._lock = threading.Lock()
+
+    def complete(self, messages: Sequence[Message]) -> Completion:
+        import time
+
+        with self._lock:
+            self.calls += 1
+        time.sleep(self.delay)
+        if self.fail_with is not None:
+            raise self.fail_with
+        check = messages[1]["content"].splitlines()[0].removeprefix("Check: ")
+        answer = json.loads(_answer())
+        answer["summary"] = check
+        return Completion(json.dumps(answer), 500, 0, 100, self.delay)
+
+
+def test_findings_are_explained_in_parallel_and_stay_matched(tmp_path: Path) -> None:
+    import time
+
+    project = Project.load(FIXTURES_DIR / "leaky_emg")
+    report = analyze_project(project)
+    client = SlowClient(delay=0.3)
+
+    started = time.perf_counter()
+    explain_report(
+        report,
+        project,
+        client,
+        provider="deepseek",
+        cache=ExplanationCache(tmp_path),
+        concurrency=6,
+    )
+    elapsed = time.perf_counter() - started
+
+    assert client.calls == len(report.findings) == 9
+    assert elapsed < 9 * 0.3 * 0.6  # clearly faster than one after another
+    for finding in report.findings:
+        assert finding.explanation is not None
+        assert finding.explanation.summary == finding.check_id
+
+
+def test_fatal_error_cancels_findings_not_started(tmp_path: Path) -> None:
+    project = Project.load(FIXTURES_DIR / "leaky_emg")
+    report = analyze_project(project)
+    client = SlowClient(delay=0.2, fail_with=FatalLLMError("no credit"))
+
+    with pytest.raises(FatalLLMError):
+        explain_report(
+            report,
+            project,
+            client,
+            provider="deepseek",
+            cache=ExplanationCache(tmp_path),
+            concurrency=2,
+        )
+
+    assert client.calls < len(report.findings)

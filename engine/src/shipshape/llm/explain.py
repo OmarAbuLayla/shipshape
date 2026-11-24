@@ -8,9 +8,11 @@ in the normal case, two at most.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -47,6 +49,7 @@ FIXABLE_CHECKS = frozenset(
     }
 )
 DEFAULT_MAX_FINDINGS = 15
+DEFAULT_CONCURRENCY = 6  # parallel API calls; DeepSeek allows far more, this keeps bursts polite
 VERIFIED_NOTE = (
     "Verified by static checks: applies cleanly, parses, removes the finding and adds no new "
     "findings. Behaviour was not tested."
@@ -74,6 +77,12 @@ class _Usage:
         self.input_tokens += completion.input_tokens
         self.cached_input_tokens += completion.cached_input_tokens
         self.output_tokens += completion.output_tokens
+
+    def merge(self, other: _Usage) -> None:
+        self.calls += other.calls
+        self.input_tokens += other.input_tokens
+        self.cached_input_tokens += other.cached_input_tokens
+        self.output_tokens += other.output_tokens
 
 
 def _parse(text: str) -> _Answer:
@@ -143,6 +152,52 @@ def _build(answer: _Answer, model: str, status: FixStatus, note: str) -> Explana
     )
 
 
+@dataclass
+class _Outcome:
+    """Result of one finding's task, merged into the stats on the main thread."""
+
+    explanation: Explanation | None = None
+    usage: _Usage = field(default_factory=lambda: _Usage())
+    cached: bool = False
+    retried: bool = False
+    failed: bool = False
+    fatal: FatalLLMError | None = None
+
+
+def _explain_with_cache(
+    client: ChatClient,
+    project: Project,
+    finding: Finding,
+    cache: ExplanationCache,
+    stop: threading.Event,
+) -> _Outcome:
+    """Explain one finding (or reuse the cache). Runs on a worker thread."""
+    fix_allowed = finding.check_id in FIXABLE_CHECKS
+    context = build_context(project, finding, fix_allowed)
+    key = cache_key(client.model, finding.check_id, fix_allowed, context.text)
+    cached = cache.get(key)
+    if cached is not None:
+        return _Outcome(explanation=cached.model_copy(update={"cached": True}), cached=True)
+    outcome = _Outcome()
+    if stop.is_set():
+        outcome.failed = True
+        return outcome
+    try:
+        explanation, retried = _explain_one(
+            client, project, finding, context, fix_allowed, outcome.usage
+        )
+    except FatalLLMError as exc:
+        stop.set()
+        outcome.fatal = exc
+        return outcome
+    except LLMError:
+        outcome.failed = True
+        return outcome
+    cache.put(key, explanation)
+    outcome.explanation, outcome.retried = explanation, retried
+    return outcome
+
+
 def explain_report(
     report: Report,
     project: Project,
@@ -152,43 +207,52 @@ def explain_report(
     max_findings: int = DEFAULT_MAX_FINDINGS,
     cache: ExplanationCache | None = None,
     progress: Callable[[str], None] | None = None,
+    concurrency: int = DEFAULT_CONCURRENCY,
 ) -> ExplainStats:
     """Attach explanations to the most severe findings of ``report`` (in place).
 
-    Findings are already sorted by severity, so the limit keeps the important ones. A fatal
-    error (bad key, no credit) stops the run; any other failure skips just that finding.
+    Findings are already sorted by severity, so the limit keeps the important ones. Up to
+    ``concurrency`` findings are explained at the same time. A fatal error (bad key, no
+    credit) cancels the findings not started yet and is re-raised; any other failure skips
+    just that finding.
     """
     cache = cache or ExplanationCache()
     usage = _Usage()
     stats = ExplainStats(provider=provider, model=client.model)
     started = time.perf_counter()
-    for number, finding in enumerate(report.findings[:max_findings], start=1):
-        fix_allowed = finding.check_id in FIXABLE_CHECKS
-        context = build_context(project, finding, fix_allowed)
-        key = cache_key(client.model, finding.check_id, fix_allowed, context.text)
-        if progress:
-            progress(f"[{number}/{min(len(report.findings), max_findings)}] {finding.title}")
-        cached = cache.get(key)
-        if cached is not None:
-            finding.explanation = cached.model_copy(update={"cached": True})
-            stats.cache_hits += 1
-        else:
-            try:
-                explanation, retried = _explain_one(
-                    client, project, finding, context, fix_allowed, usage
-                )
-            except FatalLLMError:
-                raise
-            except LLMError:
-                stats.failures += 1
-                continue
-            stats.retries += retried
-            cache.put(key, explanation)
-            finding.explanation = explanation
+    selected = report.findings[:max_findings]
+    stop = threading.Event()
+    lock = threading.Lock()
+    done = 0
+
+    def work(finding: Finding) -> _Outcome:
+        nonlocal done
+        outcome = _explain_with_cache(client, project, finding, cache, stop)
+        with lock:
+            done += 1
+            if progress:
+                progress(f"[{done}/{len(selected)}] {finding.title}")
+        return outcome
+
+    fatal: FatalLLMError | None = None
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        outcomes = list(pool.map(work, selected))
+    for finding, outcome in zip(selected, outcomes, strict=True):
+        usage.merge(outcome.usage)
+        if outcome.fatal is not None:
+            fatal = fatal or outcome.fatal
+            continue
+        if outcome.failed or outcome.explanation is None:
+            stats.failures += outcome.failed
+            continue
+        finding.explanation = outcome.explanation
+        stats.cache_hits += outcome.cached
+        stats.retries += outcome.retried
         stats.findings_explained += 1
-        status = finding.explanation.fix_status
-        stats.fixes_verified += status is FixStatus.VERIFIED
-        stats.fixes_rejected += status is FixStatus.REJECTED
+        stats.fixes_verified += outcome.explanation.fix_status is FixStatus.VERIFIED
+        stats.fixes_rejected += outcome.explanation.fix_status is FixStatus.REJECTED
+    if fatal is not None:
+        raise fatal
 
     stats.api_calls = usage.calls
     stats.input_tokens = usage.input_tokens

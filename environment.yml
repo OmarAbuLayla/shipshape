@@ -6,3 +6,4 @@ dependencies:
   - pip
   - pip:
       - -e ./engine[dev]
+      - -e ./api[dev]

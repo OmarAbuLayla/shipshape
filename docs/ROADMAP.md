@@ -2,9 +2,11 @@
 
 Every phase ends with something that can be demonstrated on its own.
 
-Status: Phases 0 to 3 are done. Real run of Phase 3 with prompt version 2026-11-24.2 (deepseek-flash, fixture corpus, November 2026): 23 findings explained with 24 API calls (1 retry, 0 failures), about 970 input tokens (64% served from DeepSeek's prefix cache) and 870 output tokens per call, about $0.028 in total at peak prices, 135 s wall time (calls run one after another, about 5-6 s each). Every fix proposed for a Python file passed validation (11 of 11); notebook findings are explanation-only by design. The tightened prompt made explanations about 26% shorter and adds a "heads-up" when a fix changes visible behaviour.
+Status: Phases 0 to 4 are done. Real run of Phase 3 with prompt version 2026-11-24.2 (deepseek-flash, fixture corpus, November 2026): 23 findings explained with 24 API calls (1 retry, 0 failures), about 970 input tokens (64% served from DeepSeek's prefix cache) and 870 output tokens per call, about $0.028 in total at peak prices, 135 s wall time (calls run one after another, about 5-6 s each). Every fix proposed for a Python file passed validation (11 of 11); notebook findings are explanation-only by design. The tightened prompt made explanations about 26% shorter and adds a "heads-up" when a fix changes visible behaviour.
 
-Known follow-up for Phase 4: run explanation calls concurrently (a 15-finding project currently takes about 1.5 minutes).
+Phase 4: local API (background scans, SQLite history, safe zip uploads, serves the app) and the React review app (start, progress, review with issue list, architecture map and explanation panel, history; light and dark). Explanation calls run in parallel (9 findings: 14 s instead of about 50 s).
+
+Open follow-ups: development-only npm advisories (Vite dev server, Vitest, ESLint internals) need major upgrades of the build tools; the runtime dependencies have none. Very large projects stay readable by fitting at no less than 60% zoom rather than showing everything at once.
 
 Known follow-up for Phase 5: fixes are generated per finding, so two fixes can touch the same line (for example the leakage split and the missing seed). Applying several fixes must happen one at a time, re-validating each against the already-changed code.
 

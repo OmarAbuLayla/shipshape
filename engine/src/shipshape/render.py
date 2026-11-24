@@ -96,7 +96,7 @@ def render_explanations(report: Report, console: Console) -> None:
     explained = [f for f in report.findings if f.explanation is not None]
     if not explained:
         return
-    console.rule("[bold]Explanations")
+    console.rule("[bold]Explanations", characters="-")
     for finding in explained:
         explanation = finding.explanation
         assert explanation is not None
@@ -124,7 +124,7 @@ def render_explanations(report: Report, console: Console) -> None:
             if stats.estimated_cost_usd is not None
             else "cost unknown for this model"
         )
-        console.rule()
+        console.rule(characters="-")
         console.print(
             f"{stats.findings_explained} explained with {stats.model}: {stats.api_calls} API calls "
             f"({stats.retries} retries, {stats.cache_hits} from cache, {stats.failures} failed), "

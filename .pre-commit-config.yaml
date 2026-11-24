@@ -17,6 +17,6 @@ repos:
     hooks:
       - id: ruff
         args: ["--fix"]
-        files: ^engine/
+        files: ^(engine|api)/
       - id: ruff-format
-        files: ^engine/
+        files: ^(engine|api)/
