@@ -238,6 +238,89 @@ def _package_overlap(
     return overlap if overlap >= DUPLICATE_OVERLAP else None
 
 
+NOT_LIBRARY_MODULES = frozenset(
+    {"__init__.py", "__main__.py", "setup.py", "conftest.py", "noxfile.py", "manage.py"}
+)
+EXAMPLE_FOLDERS = frozenset({"examples", "example", "docs", "scripts", "notebooks", "benchmarks"})
+
+
+def _is_library_project(project: Project) -> bool:
+    """Installable packages expose modules to their users, so "unused here" means little."""
+    return bool(project.files_matching("setup.py", "setup.cfg", max_depth=1)) or any(
+        "[project]" in s or "[tool.poetry]" in s
+        for s in (
+            (project.root / rel).read_text(encoding="utf-8", errors="replace")
+            for rel in project.files_matching("pyproject.toml", max_depth=1)
+        )
+    )
+
+
+def _runs_on_its_own(tree: ast.Module) -> bool:
+    """True for scripts: a ``__main__`` guard or top-level code beyond definitions."""
+    quiet = (
+        ast.Import,
+        ast.ImportFrom,
+        ast.FunctionDef,
+        ast.AsyncFunctionDef,
+        ast.ClassDef,
+        ast.Assign,
+        ast.AnnAssign,
+        ast.Pass,
+    )
+    for statement in tree.body:
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
+            continue  # docstring
+        if not isinstance(statement, quiet):
+            return True  # an if __name__ == "__main__" block, a call, a loop, ...
+    return False
+
+
+class UnusedModule(Check):
+    """Modules no other file imports and that do not run anything themselves: dead code."""
+
+    id: ClassVar[str] = "structure.unused-module"
+    title: ClassVar[str] = "Modules nothing uses"
+    severity: ClassVar[Severity] = Severity.MINOR
+    dimension: ClassVar[Dimension] = Dimension.STRUCTURE
+    concept: ClassVar[str] = "Keeping code lean"
+
+    def run(self, project: Project) -> list[Finding]:
+        """Flag library-style modules no file (code, test or notebook) imports.
+
+        Scripts (top-level code or a ``__main__`` guard), package ``__init__`` files, example
+        folders and installable libraries (whose modules are meant for other projects) are
+        left out, and so are projects whose files never import each other.
+        """
+        if _is_library_project(project):
+            return []
+        links, _ = resolve_imports(project)
+        imported = {link.target for link in links if link.source != link.target}
+        if not imported:
+            return []  # loose files that never import each other: nothing to be unused by
+        unused = [
+            source.path
+            for source in project.python_files
+            if source.path not in imported
+            and not source.is_test
+            and source.name not in NOT_LIBRARY_MODULES
+            and not EXAMPLE_FOLDERS & set(source.dir_parts)
+            and source.tree is not None
+            and source.tree.body
+            and not _runs_on_its_own(source.tree)
+        ]
+        if not unused:
+            return []
+        message = (
+            f"{plural(len(unused), 'module is', 'modules are')} never imported by any other "
+            f"file, test or notebook, and {'it does' if len(unused) == 1 else 'they do'} not "
+            f"run anything on {'its' if len(unused) == 1 else 'their'} own "
+            f'({examples(unused)}). Dead code still gets read, searched and "fixed", and it '
+            f"makes the project look bigger than it is. Delete it (git keeps the history), or "
+            f"import it where it was meant to be used."
+        )
+        return [self.finding(message, [Location(path=path) for path in unused])]
+
+
 def strongly_connected(adjacency: dict[str, set[str]]) -> list[list[str]]:
     """Strongly connected components (Kosaraju, iterative so deep graphs cannot overflow)."""
     order: list[str] = []

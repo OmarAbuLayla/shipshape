@@ -106,14 +106,80 @@ def _is_modulo_filter(node: ast.expr) -> bool:
     )
 
 
+SHUFFLE_FUNCTIONS = frozenset({"shuffle"})  # np.random.shuffle(idx), random.shuffle(idx)
+
+
+def _shuffled_index_names(tree: ast.AST) -> set[str]:
+    """Names holding shuffled positions: ``idx = np.random.permutation(n)``, or a list or
+    range that is later passed to ``shuffle``."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and last_name(node.value) == "permutation"
+        ):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(node, ast.Call)
+            and last_name(node) in SHUFFLE_FUNCTIONS
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+        ):
+            names.add(node.args[0].id)
+    return names
+
+
+def _shuffle_slice_sites(tree: ast.AST) -> list[int]:
+    """Hand-made splits: shuffled positions cut into parts, as in ``idx[:4000]``."""
+    shuffled = _shuffled_index_names(tree)
+    if not shuffled:
+        return []
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in shuffled
+        and isinstance(node.slice, ast.Slice)
+    ]
+
+
+def _sample_drop_sites(tree: ast.AST) -> list[int]:
+    """``train = df.sample(frac=0.8)`` together with ``df.drop(train.index)``."""
+    drops_an_index = any(
+        last_name(call) == "drop"
+        and any(isinstance(a, ast.Attribute) and a.attr == "index" for a in call.args)
+        for call in calls(tree)
+    )
+    if not drops_an_index:
+        return []
+    sites = []
+    for call in calls(tree):
+        frac = next((kw.value for kw in call.keywords if kw.arg == "frac"), None)
+        if (
+            last_name(call) == "sample"
+            and isinstance(frac, ast.Constant)
+            and isinstance(frac.value, float)
+            and 0 < frac.value < 1
+        ):
+            sites.append(call.lineno)
+    return sites
+
+
 def sample_split_sites(tree: ast.AST) -> list[int]:
-    """Line numbers where data is split sample by sample."""
+    """Line numbers where data is split sample by sample.
+
+    Recognised: ``train_test_split`` and sample-wise splitters (``KFold`` ...), ``i % k``
+    filters, shuffled positions sliced into parts, and ``sample(frac=...)`` with ``drop``.
+    """
     lines = [
         call.lineno for call in calls(tree) if last_name(call) in SPLIT_FUNCTIONS | SAMPLE_SPLITTERS
     ]
     for node in ast.walk(tree):
         if isinstance(node, ast.comprehension):
             lines.extend(cond.lineno for cond in node.ifs if _is_modulo_filter(cond))
+    lines += _shuffle_slice_sites(tree) + _sample_drop_sites(tree)
     return sorted(set(lines))
 
 

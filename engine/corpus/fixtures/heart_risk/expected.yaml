@@ -5,10 +5,13 @@
 # an import cycle, loop closures, a star import, a renamed copy of the data package
 # (data_old) and a single small test.
 # Known blind spots, deliberately NOT expected: leakage through preprocessing fitted on
-# all rows (data/cleaning.py), the notebook's permutation split (cell 5), the `global`
+# all rows (data/cleaning.py), the `global`
 # cache without rebinding, and model.build() silently falling back to XGBoost.
 expected:
   - {check: correctness.grouped-split-leakage, path: train.py, line: 25}
+  - {check: correctness.grouped-split-leakage, path: notebooks/explore.ipynb, cell: 5, line: 2}
+  - {check: structure.unused-module, path: data_old/cleaning.py}
+  - {check: structure.unused-module, path: data_old/loading.py}
   - {check: security.hardcoded-secret, path: settings.py, line: 6}
   - {check: correctness.array-none-comparison, path: data/loading.py, line: 39}
   - {check: correctness.array-none-comparison, path: data_old/loading.py, line: 39}

@@ -11,7 +11,7 @@ from shipshape.checks.readability import PrintDebugging, is_restating
 from shipshape.checks.reproducibility import MissingSeed, UnpinnedDependencies
 from shipshape.checks.ruff import RuffCheck
 from shipshape.checks.security import EnvFileNotIgnored, HardcodedSecret, _gitignore_covers
-from shipshape.checks.structure import DuplicatedPackage
+from shipshape.checks.structure import DuplicatedPackage, UnusedModule
 from shipshape.checks.testing import UntestedModules
 from shipshape.models import Dimension, Finding, Location, Severity
 from shipshape.scoring import dimension_scores, overall_grade
@@ -275,3 +275,70 @@ def test_merged_parameter_counts_as_a_dataframe(make_project: MakeProject) -> No
     )
     (finding,) = ArrayNoneComparison().run(make_project({"m.py": code}))
     assert finding.locations[0].start_line == 2
+
+
+def test_shuffled_indices_sliced_into_parts_are_a_split(make_project: MakeProject) -> None:
+    code = (
+        "import numpy as np\n"
+        "patients = df['patient_id']\n"
+        "idx = np.random.permutation(len(df))\n"
+        "train, test = df.iloc[idx[:4000]], df.iloc[idx[4000:]]\n"
+    )
+    (finding,) = GroupedSplitLeakage().run(make_project({"split.py": code}))
+    assert [loc.start_line for loc in finding.locations] == [4]
+
+
+def test_sample_and_drop_is_a_split(make_project: MakeProject) -> None:
+    code = (
+        "subjects = df['subject']\n"
+        "train = df.sample(frac=0.8, random_state=0)\n"
+        "test = df.drop(train.index)\n"
+    )
+    (finding,) = GroupedSplitLeakage().run(make_project({"split.py": code}))
+    assert [loc.start_line for loc in finding.locations] == [2]
+
+
+def test_shuffling_without_slicing_is_not_a_split(make_project: MakeProject) -> None:
+    code = (
+        "import random\n"
+        "patients = load()\n"
+        "random.shuffle(patients)\n"
+        "for p in patients:\n"
+        "    show(p)\n"
+    )
+    assert GroupedSplitLeakage().run(make_project({"order.py": code})) == []
+
+
+def test_unused_module_is_found_and_scripts_are_not(make_project: MakeProject) -> None:
+    files = {
+        "main.py": "from lib import helper\n\nhelper()\n",
+        "lib.py": "def helper():\n    return 1\n",
+        "dead.py": "def old():\n    return 2\n",
+        "run_me.py": "def go():\n    return 3\n\n\nif __name__ == '__main__':\n    go()\n",
+        "pkg/__init__.py": "",
+        "examples/demo.py": "def demo():\n    return 4\n",
+        "tests/test_lib.py": "from lib import helper\n",
+    }
+    (finding,) = UnusedModule().run(make_project(files))
+    assert [loc.path for loc in finding.locations] == ["dead.py"]
+
+
+def test_module_used_only_by_a_notebook_counts_as_used(make_project: MakeProject) -> None:
+    notebook = (
+        '{"cells": [{"cell_type": "code", "metadata": {}, "outputs": [], '
+        '"execution_count": null, "source": ["from lib import helper\\n"]}], '
+        '"metadata": {}, "nbformat": 4, "nbformat_minor": 5}'
+    )
+    files = {"lib.py": "def helper():\n    return 1\n", "explore.ipynb": notebook}
+    assert UnusedModule().run(make_project(files)) == []
+
+
+def test_installable_libraries_are_not_checked_for_unused_modules(
+    make_project: MakeProject,
+) -> None:
+    files = {
+        "pyproject.toml": "[project]\nname = 'mylib'\n",
+        "mylib/__init__.py": "",
+        "mylib/api.py": "def public():\n    return 1\n",
+    }
+    assert UnusedModule().run(make_project(files)) == []

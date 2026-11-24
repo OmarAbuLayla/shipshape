@@ -38,7 +38,7 @@ Lean code is quicker to review and has fewer surprises. Linters fix most of this
 
 ## How Shipshape spots it
 
-Through ruff's rules F401 (imports that are never used) and F841 (local variables assigned and never read). Imports kept on purpose, for example to re-export names from a package's `__init__.py`, can look unused.
+Through ruff's rules F401 (imports that are never used) and F841 (local variables assigned and never read). Imports kept on purpose, for example to re-export names from a package's `__init__.py`, can look unused. Whole modules that no file, test or notebook imports, and that do not run anything themselves, are reported as `structure.unused-module`; scripts, example folders and installable libraries (whose modules are meant for other projects) are left out. Unused functions inside a module that is used are not detected.
 
 ## Read more
 

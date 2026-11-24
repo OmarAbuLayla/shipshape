@@ -16,12 +16,13 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 
 | Dimension | Check | What it looks for |
 |---|---|---|
-| Correctness | `correctness.grouped-split-leakage` | Sample-wise splits (`train_test_split`, `KFold`, `i % 5 == 4`) in files that also track subjects, patients, papers or similar, without a group-aware splitter |
+| Correctness | `correctness.grouped-split-leakage` | Sample-wise splits (`train_test_split`, `KFold`, `i % 5 == 4`, shuffled indices sliced into parts, `sample(frac=...)` with `drop`) in files and notebooks that also track subjects, patients, papers or similar, without a group-aware splitter |
 | | `correctness.swallowed-exception` | Bare `except:` and `except Exception: pass` without a comment explaining why |
 | | `correctness.array-none-comparison` | `== None` / `!= None` on a name that clearly holds a pandas or numpy object (assigned from `pd.`/`np.`, used with DataFrame methods, or merged): it crashes in an `if` |
 | Structure | `structure.oversized-file` | Files with 400+ (minor) or 700+ (major) lines of code |
 | | `structure.complex-function` | Cyclomatic complexity of 15 or more (radon) |
 | | `structure.duplicated-package` | The same package copied into several folders: same-named packages by file names, renamed copies (`data` / `data_old`) by content |
+| | `structure.unused-module` | Modules no file, test or notebook imports and that run nothing themselves (scripts, `__init__.py`, example folders and installable libraries are left out) |
 | | `structure.import-cycle` | Modules that import each other at module level (lazy imports inside functions don't count) |
 | Reproducibility | `repro.hardcoded-path` | Absolute, machine-specific paths in string literals (test files are skipped) |
 | | `repro.missing-environment` | Third-party imports but no requirements/environment/pyproject file |

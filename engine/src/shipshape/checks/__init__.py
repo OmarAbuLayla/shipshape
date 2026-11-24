@@ -27,6 +27,7 @@ from shipshape.checks.structure import (
     DuplicatedPackage,
     ImportCycle,
     OversizedFile,
+    UnusedModule,
 )
 from shipshape.checks.testing import NoTests, UntestedModules
 
@@ -43,6 +44,7 @@ def default_checks() -> list[Check]:
         ComplexFunction(),
         DuplicatedPackage(),
         ImportCycle(),
+        UnusedModule(),
         HardcodedPath(),
         MissingEnvironment(),
         UnpinnedDependencies(),
