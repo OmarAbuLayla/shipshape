@@ -11,6 +11,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.table import Table
 
 from shipshape import __version__
@@ -19,6 +20,7 @@ from shipshape.checks import RULES, default_checks
 from shipshape.evaluation import case_root, evaluate, load_corpus, load_manifest
 from shipshape.export import export, format_for_path
 from shipshape.fixes import apply_fixes, fixable, project_zip
+from shipshape.lessons import all_lessons, find_lesson
 from shipshape.llm.cache import ExplanationCache
 from shipshape.llm.client import FatalLLMError, LLMError, OpenAICompatibleClient, ping
 from shipshape.llm.explain import DEFAULT_MAX_FINDINGS, explain_report
@@ -373,6 +375,31 @@ def llm_check(
         f"\nTest request OK in {result.seconds:.1f}s: replied {result.reply!r} "
         f"({result.input_tokens} tokens in, {result.output_tokens} out)."
     )
+
+
+@app.command("lessons")
+def show_lessons(
+    name: Annotated[
+        str | None, typer.Argument(help="A lesson's slug, concept or check id; omit to list all.")
+    ] = None,
+) -> None:
+    """Short lessons on the ideas behind every check."""
+    console = Console()
+    if name is None:
+        table = Table(title="Lessons", show_lines=False)
+        table.add_column("Lesson")
+        table.add_column("Concept")
+        table.add_column("Taught by")
+        for lesson in all_lessons():
+            table.add_row(lesson.slug, lesson.concept, ", ".join(lesson.checks))
+        console.print(table)
+        console.print("Show one with: shipshape lessons <lesson>")
+        return
+    found = find_lesson(name)
+    if found is None:
+        typer.echo(f"No lesson called {name!r}. Run `shipshape lessons` to list them.", err=True)
+        raise typer.Exit(code=2)
+    console.print(Markdown(f"# {found.concept}\n\n*{found.summary}*\n\n{found.body}"))
 
 
 @app.command()

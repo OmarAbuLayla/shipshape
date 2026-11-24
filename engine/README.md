@@ -8,6 +8,7 @@ shipshape analyze path/to/project -o out.json  # also write the JSON report
 shipshape analyze path/to/project --export findings.md   # or .json / .csv, with or without --explain
 shipshape map path/to/project --html map.html  # architecture map (interactive page)
 shipshape checks                               # list every check
+shipshape lessons data-leakage                 # the lesson behind a check (omit the name to list all)
 shipshape eval corpus/fixtures --strict        # precision/recall against labelled projects
 ```
 
@@ -36,6 +37,10 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 | (any) | `lint.*` | A curated set of 11 ruff rules (undefined names, mutable defaults, unused imports, ...) |
 
 Grouped issues become one finding with many locations, so a project with 100 prints gets one finding, not 100. Thresholds are constants at the top of each check module.
+
+## Lessons
+
+Every finding names the concept it teaches, and every concept has a short lesson in `src/shipshape/lessons/`: the idea in plain words, a small before and after, why engineers care, how Shipshape detects it (and what it misses), and a few links. They are written by people, not generated, and a test makes sure every concept has one, every Python example parses and every link is `https`. Read them with `shipshape lessons`, in the web app ("Read the lesson" on any finding, or the Lessons page), or as plain Markdown.
 
 ## Leaving things out, visibly
 

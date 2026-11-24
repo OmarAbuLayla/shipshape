@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from shipshape import __version__ as engine_version
 from shipshape.export import ExportFormat, export
+from shipshape.lessons import Lesson, all_lessons, find_lesson
 from shipshape.llm.explain import DEFAULT_MAX_FINDINGS
 from shipshape.llm.settings import SettingsError, load_settings
 from shipshape.models import Report
@@ -154,6 +155,19 @@ def create_app(
         summary = store.create(scan_id, name, "upload", explain)
         runner.submit(ScanJob(scan_id, root, explain, max_findings, cleanup=workdir))
         return summary
+
+    @app.get("/api/lessons")
+    def list_lessons() -> list[Lesson]:
+        """Every concept lesson, without its body (slug, concept, summary, checks)."""
+        return [lesson.model_copy(update={"body": ""}) for lesson in all_lessons()]
+
+    @app.get("/api/lessons/{name}")
+    def get_lesson(name: str) -> Lesson:
+        """One lesson by slug, concept or check id, with its Markdown body."""
+        lesson = find_lesson(name)
+        if lesson is None:
+            raise HTTPException(404, "No such lesson.")
+        return lesson
 
     @app.get("/api/scans")
     def list_scans() -> list[ScanSummary]:

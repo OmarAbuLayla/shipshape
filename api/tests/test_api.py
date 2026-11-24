@@ -331,3 +331,12 @@ def test_source_of_an_uploaded_file(client: TestClient) -> None:
     source = client.get(f"/api/scans/{scan_id}/source", params={"path": "train.py"}).json()
 
     assert source["text"] == TRAIN and source["changed"] is False
+
+
+def test_lessons(client: TestClient) -> None:
+    listing = client.get("/api/lessons").json()
+    lesson = client.get("/api/lessons/correctness.grouped-split-leakage").json()
+
+    assert len(listing) == 25 and all(item["body"] == "" for item in listing)
+    assert lesson["slug"] == "data-leakage" and "## The idea" in lesson["body"]
+    assert client.get("/api/lessons/nope").status_code == 404

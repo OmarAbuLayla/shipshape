@@ -152,6 +152,15 @@ export interface SourceText {
   changed: boolean;
 }
 
+/** GET /api/lessons (body empty) and /api/lessons/{name}. */
+export interface Lesson {
+  slug: string;
+  concept: string;
+  summary: string;
+  checks: string[];
+  body: string; // Markdown
+}
+
 export interface Report {
   schema_version: string;
   engine_version: string;

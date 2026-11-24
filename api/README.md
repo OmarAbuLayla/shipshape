@@ -13,6 +13,8 @@ Run it from the repository root so it finds the `.env` file with your LLM settin
 | GET | `/api/health` | Engine version and whether an LLM is configured (never the key) |
 | POST | `/api/scans` | Scan a folder on this machine: `{"path": "...", "explain": false}` |
 | POST | `/api/scans/upload` | Scan an uploaded `.zip` (form fields `file`, `explain`) |
+| GET | `/api/lessons` | Every concept lesson (slug, concept, summary, checks) |
+| GET | `/api/lessons/{name}` | One lesson with its Markdown body, by slug, concept or check id |
 | GET | `/api/scans` | Past scans, newest first |
 | GET | `/api/scans/{id}` | Status and progress of one scan |
 | GET | `/api/scans/{id}/report` | The full report (findings, graph, explanations) |

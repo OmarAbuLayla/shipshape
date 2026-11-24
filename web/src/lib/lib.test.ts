@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { formatLocation, splitSteps, worstSeverity } from "./format";
 import { boxesForFinding, buildViewGraph, defaultExpanded, findingsOfBox, folderId, groupId } from "./graphModel";
+import type { ReactElement } from "react";
+
 import { highlightPython } from "./highlight";
+import { inline } from "./markdown";
 import { layoutGraph } from "./layout";
 import { absoluteLine, blockAtLine, buildBlockView, flaggedLines } from "./blockModel";
 import type { Block, FileInfo, Finding, GraphNode, ProjectGraph } from "./types";
@@ -221,5 +224,16 @@ describe("block model", () => {
     expect(absoluteLine(location, nb)).toBe(11);
     const flagged = flaggedLines([{ ...fileFindings[0]!, locations: [location] }], "nb.ipynb", nb);
     expect([...flagged.entries()]).toEqual([[11, [0]]]);
+  });
+});
+
+describe("lesson markdown", () => {
+  it("keeps https links, drops other link targets, and marks inline code", () => {
+    const parts = inline("See [docs](https://example.org) or [bad](javascript:alert(1)) and `x == None`.");
+    const elements = parts.filter((p): p is ReactElement => typeof p === "object" && p !== null);
+
+    expect(elements.map((e) => e.type)).toEqual(["a", "code"]);
+    expect((elements[0]!.props as { href: string }).href).toBe("https://example.org");
+    expect(parts).toContain("bad");
   });
 });

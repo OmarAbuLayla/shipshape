@@ -6,6 +6,7 @@ import { providerName } from "./lib/format";
 import { useHealth, useTheme } from "./lib/hooks";
 import { FixesPage } from "./pages/FixesPage";
 import { History } from "./pages/History";
+import { Lessons } from "./pages/Lessons";
 import { Home } from "./pages/Home";
 import { ScanPage } from "./pages/ScanPage";
 
@@ -27,6 +28,7 @@ export function App() {
             New scan
           </NavLink>
           <NavLink to="/history">History</NavLink>
+          <NavLink to="/lessons">Lessons</NavLink>
         </nav>
         <div className="right">
           {health.error ? (
@@ -57,6 +59,8 @@ export function App() {
           <Route path="/scans/:id" element={<ScanPage />} />
           <Route path="/scans/:id/fixes" element={<FixesPage />} />
           <Route path="/history" element={<History />} />
+          <Route path="/lessons" element={<Lessons />} />
+          <Route path="/lessons/:slug" element={<Lessons />} />
           <Route
             path="*"
             element={

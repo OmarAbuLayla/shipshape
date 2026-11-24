@@ -1,4 +1,7 @@
+import { useState } from "react";
+
 import { Alert, Book, Check } from "../components/icons";
+import { LessonView } from "../components/LessonView";
 import { capitalize, exclusionLines, formatLocation, plural, shortPath, splitSteps } from "../lib/format";
 import type { ViewNode } from "../lib/graphModel";
 import type { Block, Finding, Location, Report } from "../lib/types";
@@ -28,6 +31,7 @@ export function DetailPanel({ report, selected, box, block, onSelect, onOpenLoca
     <aside className="col detail" aria-label="Details">
       {finding ? (
         <FindingDetail
+          key={selected}
           finding={finding}
           number={(selected ?? 0) + 1}
           onLocate={onOpenLocation}
@@ -67,6 +71,17 @@ interface FindingDetailProps {
 
 function FindingDetail({ finding, number, onLocate, included, onToggleFix }: FindingDetailProps) {
   const x = finding.explanation;
+  const [lesson, setLesson] = useState(false);
+  if (lesson) {
+    return (
+      <>
+        <button className="btn ghost small" style={{ justifySelf: "start" }} onClick={() => setLesson(false)}>
+          ← Back to finding {number}
+        </button>
+        <LessonView name={finding.check_id} compact />
+      </>
+    );
+  }
   return (
     <>
       <div className="detail-head">
@@ -155,13 +170,13 @@ function FindingDetail({ finding, number, onLocate, included, onToggleFix }: Fin
         </div>
       </div>
 
-      <div className="concept">
+      <button className="concept" onClick={() => setLesson(true)}>
         <span className="icon"><Book /></span>
         <span>
           <b>{finding.concept}</b>
-          <span>The idea behind this finding. Short lessons arrive in a later version.</span>
+          <span>The idea behind this finding, with a before and after. Read the lesson ›</span>
         </span>
-      </div>
+      </button>
     </>
   );
 }
