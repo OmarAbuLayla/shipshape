@@ -41,3 +41,6 @@ brag-output*/
 
 # Private planning notes, not for the public repo
 docs/private/
+
+# Planning notes stay local
+docs/ROADMAP.md
