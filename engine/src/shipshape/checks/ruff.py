@@ -158,7 +158,7 @@ class RuffCheck(Check):
                 filename = str(project.root / rel)
                 items += _ruff(["--stdin-filename", filename, "-"], texts[rel])
         findings = self.translate(items, project.root)
-        return _without_array_comparisons(findings, project)
+        return without_array_comparisons(findings, project)
 
     @staticmethod
     def translate(items: list[dict[str, object]], root: Path) -> list[Finding]:
@@ -199,7 +199,7 @@ class RuffCheck(Check):
         return findings
 
 
-def _without_array_comparisons(findings: list[Finding], project: Project) -> list[Finding]:
+def without_array_comparisons(findings: list[Finding], project: Project) -> list[Finding]:
     """Leave out ``== None`` places that ``correctness.array-none-comparison`` reports."""
     taken = {
         (source.path, line)

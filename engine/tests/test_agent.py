@@ -229,3 +229,24 @@ def test_small_text_files_can_be_read_but_never_env(make_project: MakeProject) -
     assert readme.ok and "pandas" in readme.result
     assert not env.ok
     assert "secret-value-123" not in json.dumps(model.seen)
+
+
+def test_activity_says_what_is_happening(make_project: MakeProject) -> None:
+    project = make_project({"lib.py": LINT})
+    fix = _call(
+        "propose_fix",
+        check_id="lint.mutable-default",
+        why="default to None",
+        edits=[{"path": "lib.py", "search": LINT, "replace": FIXED}],
+    )
+    seen: list[str] = []
+    run_agent(
+        project,
+        ScriptedModel(
+            [[_call("read_file", path="lib.py")], [fix], [_call("finish", summary="ok")]]
+        ),
+        on_activity=seen.append,
+    )
+    assert "Reading lib.py" in seen
+    assert "Shipshape is verifying a fix for lint.mutable-default" in seen
+    assert seen.count("The model is deciding what to do next") == 3

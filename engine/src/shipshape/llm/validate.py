@@ -16,11 +16,12 @@ import ast
 import tempfile
 import warnings
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from shipshape.checks import Check, default_checks
-from shipshape.checks.ruff import RuffCheck
+from shipshape.checks.ruff import RuffCheck, without_array_comparisons
 from shipshape.llm.context import FindingContext
 from shipshape.models import Edit, Finding
 from shipshape.project import Project
@@ -91,15 +92,33 @@ def _counts(project: Project, paths: set[str], checks: list[Check]) -> Counter[s
             target = root / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(by_path[path], encoding="utf-8")
-        for finding in RuffCheck().run(Project(root=root, sources=(), files=())):
+        isolated = RuffCheck().run(Project(root=root, sources=(), files=()))
+        # Same rules as a full scan: `== None` on a DataFrame counts as the correctness finding.
+        for finding in without_array_comparisons(isolated, project):
             counts[finding.check_id] += sum(loc.path in paths for loc in finding.locations)
     return counts
 
 
+def _counts_from(findings: Sequence[Finding], paths: set[str]) -> Counter[str]:
+    """Locations per check id inside ``paths``, from findings that were already computed."""
+    counts: Counter[str] = Counter()
+    for found in findings:
+        counts[found.check_id] += sum(loc.path in paths for loc in found.locations)
+    return counts
+
+
 def validate_fix(
-    project: Project, context: FindingContext, finding: Finding, edits: list[Edit]
+    project: Project,
+    context: FindingContext,
+    finding: Finding,
+    edits: list[Edit],
+    before_findings: Sequence[Finding] | None = None,
 ) -> ValidatedFix:
-    """Run all gates; raise :class:`FixRejectedError` with a reason on the first failure."""
+    """Run all gates; raise :class:`FixRejectedError` with a reason on the first failure.
+
+    ``before_findings`` are the raw findings (before suppression) of ``project`` as it is now,
+    if the caller already has them; then the checks only run once, on the edited copy.
+    """
     if not edits:
         raise FixRejectedError("no edits were proposed")
     new_texts = apply_edits(project, context, edits)
@@ -110,7 +129,11 @@ def validate_fix(
 
     touched = set(new_texts)
     checks = [c for c in default_checks() if not isinstance(c, RuffCheck)]
-    before = _counts(project, touched, checks)
+    before = (
+        _counts_from(before_findings, touched)
+        if before_findings is not None
+        else _counts(project, touched, checks)
+    )
     after = _counts(project.with_texts(new_texts), touched, checks)
 
     targeted = sum(path in touched for path, _ in context.sent_locations) or 1

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from shipshape.analyzer import analyze_project
 from shipshape.export import (
+    GOOD_HEADING,
     SKIPPED_NOTE,
     describe_exclusions,
     describe_skipped,
@@ -118,9 +119,9 @@ def report_text(report: Report, max_findings: int = DEFAULT_MAX_FINDINGS) -> str
     skipped = describe_skipped(report)
     if skipped:
         lines.append(f"NOT ANALYSED. {SKIPPED_NOTE}: " + "; ".join(skipped))
-    good = describe_strengths(report)
+    good = describe_strengths(report, limit=None)
     if good:
-        lines.append("Already good (say so to the user): " + " ".join(good))
+        lines.append(f"{GOOD_HEADING} (tell the user): " + " ".join(good))
     lines.append("")
     for number, finding in enumerate(report.findings[:max_findings], start=1):
         lines += _finding_lines(number, finding)
@@ -205,6 +206,7 @@ def check_edits(
     check_id: str,
     edits: list[ProposedEdit],
     redactions: Redactions | None = None,
+    raw_findings: list[Finding] | None = None,
 ) -> tuple[ValidatedFix, str]:
     """Run the fix gates on ``edits`` for ``check_id`` in ``report``; nothing is written.
 
@@ -219,7 +221,7 @@ def check_edits(
         )
     resolved = [_as_edit(project, n, edit) for n, edit in enumerate(edits, start=1)]
     context = _context(project, matching, redactions)
-    validated = validate_fix(project, context, matching[0], resolved)
+    validated = validate_fix(project, context, matching[0], resolved, raw_findings)
     return validated, _elsewhere(matching, set(validated.new_texts))
 
 

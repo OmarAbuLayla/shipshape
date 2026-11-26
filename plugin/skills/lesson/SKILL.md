@@ -6,6 +6,12 @@ argument-hint: "[concept, lesson name or check id]"
 
 # Teach a concept
 
+**If Shipshape's tools are not there yet** (`scan`, `verify_fix`, `lesson`, `map` from the
+shipshape MCP server): the server may still be starting. The first start after an install or
+update builds the engine and can take a minute. Wait a few seconds and look for the tools
+again, up to about a minute, before saying they are missing. Never fall back to a review
+without them; if they still don't appear, tell the user to restart Claude Code.
+
 1. Call the Shipshape `lesson` tool with `$ARGUMENTS` (a lesson name such as `data-leakage`, a
    concept, or a check id such as `lint.mutable-default`). With no argument, it lists all lessons:
    show them briefly and ask which one.

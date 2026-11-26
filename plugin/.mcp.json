@@ -4,7 +4,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/OmarAbuLayla/shipshape#subdirectory=engine",
+        "git+https://github.com/OmarAbuLayla/shipshape@v0.8.0#subdirectory=engine",
         "shipshape-mcp"
       ]
     }

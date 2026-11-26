@@ -93,7 +93,7 @@ export function AgentPage() {
 
       {state && state.steps.length > 0 && <Timeline state={state} />}
       {state?.status === "running" && state.steps.length === 0 && (
-        <p className="muted agent-wait">Starting: the agent is looking at the findings…</p>
+        <p className="muted agent-wait">{state.activity ? `${state.activity}…` : "Starting the agent…"}</p>
       )}
       {state?.status === "done" && state.run && <Result scan={scan.data} state={state} run={state.run} />}
     </div>
@@ -136,7 +136,11 @@ function Timeline({ state }: { state: AgentState }) {
         {state.steps.map((step) => (
           <StepRow key={step.number} step={step} />
         ))}
-        {state.status === "running" && <li className="agent-step pending">…</li>}
+        {state.status === "running" && (
+          <li className="agent-step pending" aria-live="polite">
+            {state.activity ? `${state.activity}…` : "…"}
+          </li>
+        )}
       </ol>
     </section>
   );

@@ -59,6 +59,7 @@ class AgentState(BaseModel):
     run: AgentRun | None = None
     error: str = ""
     zip_available: bool = False
+    activity: str = Field(default="", description="What the agent is doing right now.")
 
 
 def agent_zip_path(data_dir: Path, scan_id: str) -> Path:
@@ -114,10 +115,14 @@ class AgentRunner:
         with self._lock:
             self._live[scan_id].steps.append(step)
 
+    def _set_activity(self, scan_id: str, text: str) -> None:
+        with self._lock:
+            self._live[scan_id].activity = text
+
     def _finish(self, scan_id: str, **changes: object) -> None:
         with self._lock:
             state = self._live.pop(scan_id)
-            final = state.model_copy(update=changes)
+            final = state.model_copy(update={**changes, "activity": ""})
         self.store.save_agent(scan_id, final.model_dump_json())
 
     def _work(self, summary: ScanSummary, root: str | None, limits: AgentStart) -> None:
@@ -130,6 +135,7 @@ class AgentRunner:
                     client,
                     AgentLimits(limits.max_steps, limits.max_cost_usd),
                     lambda step: self._record(scan_id, step),
+                    lambda text: self._set_activity(scan_id, text),
                 )
                 target = agent_zip_path(self.data_dir, scan_id)
                 target.unlink(missing_ok=True)

@@ -290,6 +290,7 @@ export interface AgentState {
   run: AgentRun | null;
   error: string;
   zip_available: boolean;
+  activity?: string;
 }
 
 export interface Health {

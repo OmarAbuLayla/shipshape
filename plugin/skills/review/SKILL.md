@@ -11,6 +11,12 @@ correctness, structure, reproducibility, readability, testing and security. Its 
 deterministic; your job is to explain them in the user's own code and to teach the idea behind
 them. This skill only reads: do not edit files here.
 
+**If Shipshape's tools are not there yet** (`scan`, `verify_fix`, `lesson`, `map` from the
+shipshape MCP server): the server may still be starting. The first start after an install or
+update builds the engine and can take a minute. Wait a few seconds and look for the tools
+again, up to about a minute, before saying they are missing. Never fall back to a review
+without them; if they still don't appear, tell the user to restart Claude Code.
+
 1. **Pick the folder.** Use `$ARGUMENTS` if given, otherwise the current working directory.
    Pass an absolute path to the tools.
 2. **Scan.** Call the Shipshape `scan` tool. If the project has many findings, the first scan

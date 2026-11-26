@@ -231,3 +231,22 @@ def test_patch_and_zip_keep_windows_line_endings(tmp_path: Path) -> None:
     assert (root / "paths.py").read_bytes() == fixed.replace("\n", "\r\n").encode()
     with zipfile.ZipFile(io.BytesIO(project_zip(root, {"paths.py": fixed}, "p"))) as archive:
         assert archive.read("p/paths.py") == fixed.replace("\n", "\r\n").encode()
+
+
+@pytest.mark.parametrize("fixture", ["heart_risk", "torch_training", "leaky_emg", "ruff_issues"])
+def test_fix_gates_count_the_same_as_a_full_scan(fixture: str) -> None:
+    """The agent hands the gates its last scan instead of recounting; both must agree."""
+    from shipshape.checks import default_checks
+    from shipshape.checks.ruff import RuffCheck
+    from shipshape.llm.validate import _counts, _counts_from
+
+    from .conftest import FIXTURES_DIR
+
+    project = Project.load(FIXTURES_DIR / fixture)
+    raw: list[Finding] = []
+    analyze_project(project, raw_out=raw)
+    paths = {s.path for s in project.python_files}
+    checks = [c for c in default_checks() if not isinstance(c, RuffCheck)]
+    recounted = {k: v for k, v in _counts(project, paths, checks).items() if v}
+    reused = {k: v for k, v in _counts_from(raw, paths).items() if v}
+    assert recounted == reused

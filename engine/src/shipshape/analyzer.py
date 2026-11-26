@@ -31,11 +31,16 @@ def analyze(root: Path, checks: Sequence[Check] | None = None) -> Report:
     return analyze_project(Project.load(root), checks)
 
 
-def analyze_project(project: Project, checks: Sequence[Check] | None = None) -> Report:
+def analyze_project(
+    project: Project,
+    checks: Sequence[Check] | None = None,
+    raw_out: list[Finding] | None = None,
+) -> Report:
     """Like :func:`analyze`, for a project that is already loaded.
 
     The project's own ignore rules are applied before scoring; everything they remove is listed
-    in ``Report.exclusions``. The scoring formula itself never changes.
+    in ``Report.exclusions``. The scoring formula itself never changes. If ``raw_out`` is given,
+    every finding before suppression is appended to it (the fix gates count those).
     """
     raw: list[Finding] = []
     errors: list[str] = []
@@ -44,6 +49,8 @@ def analyze_project(project: Project, checks: Sequence[Check] | None = None) -> 
             raw.extend(check.run(project))
         except Exception as exc:  # one broken check must not hide all other results
             errors.append(f"{check.id}: {type(exc).__name__}: {exc}")
+    if raw_out is not None:
+        raw_out.extend(raw)
     findings, suppressed = apply_suppressions(project, raw)
     findings.sort(key=lambda f: (SEVERITY_ORDER[f.severity], f.dimension, f.check_id))
     scores = dimension_scores(findings)

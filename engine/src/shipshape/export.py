@@ -44,7 +44,7 @@ def format_location(location: Location) -> str:
 GOOD_HEADING = "Already in good shape"
 
 
-def describe_strengths(report: Report) -> list[str]:
+def describe_strengths(report: Report, limit: int | None = 6) -> list[str]:
     """One line per dimension with no findings, naming what was checked there and passed.
 
     Only checks that actually ran are named; a dimension that is quiet because its checks
@@ -66,7 +66,8 @@ def describe_strengths(report: Report) -> list[str]:
         if dimension in flagged or not checked[dimension]:
             continue
         titles = sorted(set(checked[dimension]))
-        shown = "; ".join(titles[:6]) + ("; ..." if len(titles) > 6 else "")
+        cut = titles if limit is None else titles[:limit]
+        shown = "; ".join(cut) + ("; ..." if len(cut) < len(titles) else "")
         lines.append(f"{dimension.value.capitalize()}: nothing found. Checked for: {shown}.")
     return lines
 

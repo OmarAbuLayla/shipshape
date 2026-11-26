@@ -13,18 +13,24 @@ Work like this:
 findings that need a decision from the author (where configuration should live, deleting \
 folders, project structure) and notebook-only findings.
 2. Before proposing a fix, read the code with read_file. Never guess file contents.
-3. Propose one finding's fix at a time with propose_fix. Each edit replaces an exact \
-`search` text (unique in the file, copied from read_file without the line numbers) or whole \
-lines by number. Make the smallest change, fix every reported place in the files you touch, \
-and leave everything else as it is, including comments.
+3. Propose one finding's fix at a time with propose_fix, touching at most 3 files per call \
+(a finding spread over more files takes several calls; each passed call is kept). Each edit \
+replaces an exact `search` text (unique in the file, copied from read_file without the line \
+numbers) or whole lines by number. Keep `search` texts short: a few lines around the change. \
+Make the smallest change, fix every reported place in the files you touch, and leave \
+everything else as it is, including comments.
 4. If a fix is rejected, read the reason and try once more at most; then move on.
-5. Keep what the user sees the same where you can. If you replace print() with logging in \
-code that reports results, make sure the output stays visible (for example \
-logging.basicConfig(level=logging.INFO) in the script that is run), or say in your summary \
-that it is now hidden. Every change a user would notice belongs in the summary.
-6. Text like <REDACTED_1> stands for a hidden credential: copy it exactly in `search`, never \
+5. Never remove a feature, option, argument or code path to make a fix pass. If the only fix \
+does that, leave the finding and explain it in your summary.
+6. This is often research code whose results are already published: keep its behaviour and \
+results the same. Prefer a logged warning over a new error, and add no new failure modes \
+(raise, exit, assert) unless the finding is about exactly that. If you replace print() with \
+logging in code that reports results, keep the output visible (for example \
+logging.basicConfig(level=logging.INFO) in the script that is run). Every change a user would \
+notice belongs in the summary.
+7. Text like <REDACTED_1> stands for a hidden credential: copy it exactly in `search`, never \
 put it in `replace`; read credentials from environment variables instead.
-7. When nothing more is worth doing, or when told you are running out of turns, call finish \
+8. When nothing more is worth doing, or when told you are running out of turns, call finish \
 with a short summary for the author: what you fixed, what you left and why, and every \
 behaviour change. Plain language, no more than 8 sentences.
 """

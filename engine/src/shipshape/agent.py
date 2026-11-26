@@ -27,7 +27,7 @@ from shipshape.llm.client import ToolCall, ToolChatClient
 from shipshape.llm.context import Redactions
 from shipshape.llm.settings import estimate_cost
 from shipshape.llm.validate import FixRejectedError
-from shipshape.models import Dimension, Report
+from shipshape.models import Dimension, Finding, Report
 from shipshape.project import Project
 
 MAX_READ_LINES = 200
@@ -95,6 +95,7 @@ class _Workspace:
     texts: dict[str, str] = field(default_factory=dict)
     redactions: Redactions = field(default_factory=Redactions)
     _report: Report | None = None
+    _raw: list[Finding] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         for source in self.project.parsed:
@@ -108,8 +109,14 @@ class _Workspace:
 
     def report(self) -> Report:
         if self._report is None:
-            self._report = analyze_project(self.current)
+            self._raw = []
+            self._report = analyze_project(self.current, raw_out=self._raw)
         return self._report
+
+    def raw_findings(self) -> list[Finding]:
+        """Every finding of the current state before suppression (for the fix gates)."""
+        self.report()
+        return self._raw
 
     def apply(self, new_texts: dict[str, str]) -> None:
         self.texts.update(new_texts)
@@ -204,6 +211,7 @@ class _Session:
                 check_id,
                 edits,
                 self.workspace.redactions,
+                self.workspace.raw_findings(),
             )
         except (AssistError, ValidationError) as exc:
             return f"ERROR: {exc}", f"{check_id}: unusable request", False
@@ -247,13 +255,35 @@ def _assistant_message(text: str, calls: Sequence[ToolCall]) -> dict[str, Any]:
     return message
 
 
+def _activity(call: ToolCall) -> str:
+    """A plain description of a tool call that is about to run."""
+    try:
+        arguments = json.loads(call.arguments or "{}")
+    except ValueError:
+        arguments = {}
+    if not isinstance(arguments, dict):
+        arguments = {}
+    if call.name == "propose_fix":
+        return f"Shipshape is verifying a fix for {arguments.get('check_id', 'a finding')}"
+    if call.name == "read_file":
+        return f"Reading {arguments.get('path', 'a file')}"
+    if call.name == "list_findings":
+        return "Scanning the working copy again"
+    return "Finishing"
+
+
 def run_agent(
     project: Project,
     client: ToolChatClient,
     limits: AgentLimits | None = None,
     on_step: Callable[[AgentStep], None] | None = None,
+    on_activity: Callable[[str], None] | None = None,
 ) -> AgentResult:
-    """Let the model work on ``project`` until it finishes or a guard rail stops it."""
+    """Let the model work on ``project`` until it finishes or a guard rail stops it.
+
+    ``on_step`` gets every finished step; ``on_activity`` gets a short "what is happening now"
+    line before each model call and tool call, for a live display.
+    """
     limits = limits or AgentLimits()
     workspace = _Workspace(project)
     before = workspace.report()
@@ -281,6 +311,8 @@ def run_agent(
                     "summary, including every behaviour change.",
                 }
             )
+        if on_activity is not None:
+            on_activity("The model is deciding what to do next")
         turn = client.complete_tools(messages, TOOLS)
         run.turns += 1
         run.input_tokens += turn.input_tokens
@@ -292,6 +324,8 @@ def run_agent(
             run.stopped_because = "the model ended without calling finish"
             break
         for call in turn.tool_calls:
+            if on_activity is not None:
+                on_activity(_activity(call))
             result, detail, ok = session.call(call)
             step = AgentStep(
                 number=len(run.steps) + 1,
