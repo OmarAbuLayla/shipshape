@@ -528,7 +528,8 @@ a.btn.primary { color: var(--on-primary); }
 .fixes .sec { margin-top: 26px; }
 .fix-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 14px; margin-top: 22px; }
 .grade-card { display: grid; align-content: center; justify-items: center; gap: 6px; padding: 20px; }
-.grade-change { display: flex; align-items: baseline; gap: 14px; font-size: 22px; color: var(--muted); }
+.grade-change { display: flex; align-items: center; gap: 14px; font-size: 22px; color: var(--muted); }
+.grade-change b { line-height: 1; }
 .grade-change b { font-size: 44px; color: var(--fg); }
 .grade-change b.after { color: var(--ok); }
 .score-compare { width: 100%; border-collapse: collapse; font-size: 14px; }
