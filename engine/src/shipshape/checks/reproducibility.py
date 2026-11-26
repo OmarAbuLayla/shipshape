@@ -177,7 +177,7 @@ class UnpinnedDependencies(Check):
         for rel in project.files_matching("requirements*.txt", "requirements*.in"):
             try:
                 text = (project.root / rel).read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            except OSError:  # unreadable requirements file: nothing to check in it
                 continue
             total = 0
             unpinned: list[tuple[int, str]] = []

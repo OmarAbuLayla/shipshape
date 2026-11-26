@@ -1,6 +1,6 @@
 {
   "name": "shipshape",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Review vibe-coded Python projects like a careful senior engineer: deterministic findings and a grade, explanations in your own code, fixes applied only after Shipshape verified them, and lessons on the concepts behind them.",
   "author": { "name": "Omar Abulayla" },
   "homepage": "https://github.com/OmarAbuLayla/shipshape",

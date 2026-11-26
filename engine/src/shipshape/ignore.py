@@ -91,7 +91,7 @@ def load_rules(root: Path, rel_files: list[str]) -> IgnoreRules:
         base = "" if base == "." else base
         try:
             text = (root / rel).read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError:  # an unreadable ignore file adds no rules
             continue
         for raw in text.splitlines():
             line = raw.split(" #", 1)[0].strip()

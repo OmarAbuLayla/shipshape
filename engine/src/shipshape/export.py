@@ -41,6 +41,36 @@ def format_location(location: Location) -> str:
     return text
 
 
+GOOD_HEADING = "Already in good shape"
+
+
+def describe_strengths(report: Report) -> list[str]:
+    """One line per dimension with no findings, naming what was checked there and passed.
+
+    Only checks that actually ran are named; a dimension that is quiet because its checks
+    were switched off says so.
+    """
+    from shipshape.checks import RULES, default_checks  # local: checks import this module
+
+    checked: dict[Dimension, list[str]] = {d: [] for d in Dimension}
+    disabled = set(report.exclusions.disabled_checks)
+    for check in default_checks():
+        if check.id != "lint" and check.id not in disabled:
+            checked[check.dimension].append(check.title.lower())
+    for rule in RULES.values():
+        if rule.check_id not in disabled:
+            checked[rule.dimension].append(rule.title.lower())
+    flagged = {f.dimension for f in report.findings}
+    lines = []
+    for dimension in Dimension:
+        if dimension in flagged or not checked[dimension]:
+            continue
+        titles = sorted(set(checked[dimension]))
+        shown = "; ".join(titles[:6]) + ("; ..." if len(titles) > 6 else "")
+        lines.append(f"{dimension.value.capitalize()}: nothing found. Checked for: {shown}.")
+    return lines
+
+
 SKIPPED_HEADING = "Not analysed"
 SKIPPED_NOTE = (
     "Shipshape could not read these files, so any problems in them are missing from the "
@@ -144,6 +174,11 @@ def to_markdown(report: Report) -> str:
     if skipped:
         lines += [f"**{SKIPPED_HEADING}.** {SKIPPED_NOTE}:", ""]
         lines += [f"- {line}" for line in skipped]
+        lines.append("")
+    good = describe_strengths(report)
+    if good:
+        lines += [f"**{GOOD_HEADING}**", ""]
+        lines += [f"- {line}" for line in good]
         lines.append("")
     stats = report.explain_stats
     if stats is not None:

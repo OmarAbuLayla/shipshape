@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from shipshape.checks.base import Check, plural
-from shipshape.checks.correctness import array_none_comparisons
+from shipshape.checks.data_handling import array_none_comparisons
 from shipshape.models import Dimension, Finding, Location, Severity
 from shipshape.project import Project
 

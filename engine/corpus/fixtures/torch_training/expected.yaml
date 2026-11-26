@@ -1,0 +1,14 @@
+# A PyTorch EMG classifier with the four training bugs Phase 7.4 targets, plus code that
+# looks similar but is fine and must stay quiet: a folder-listing filter in data.py,
+# deliberate gradient accumulation and train(False) as eval mode in finetune.py.
+expected:
+  - {check: correctness.missing-zero-grad, path: train.py, line: 20}
+  - {check: correctness.missing-eval-mode, path: train.py, line: 31}
+  - {check: correctness.test-set-selection, path: train.py, line: 49}
+  - {check: correctness.silent-data-skip, path: data.py, line: 16}
+  - {check: testing.no-tests, path: "."}
+  - {check: structure.unused-module, path: finetune.py}
+  - {check: lint.too-many-arguments, path: finetune.py, line: 6}
+  - {check: readability.missing-type-hints, path: data.py}
+  - {check: readability.missing-type-hints, path: finetune.py}
+  - {check: readability.missing-type-hints, path: train.py}

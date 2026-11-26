@@ -9,7 +9,14 @@ from rich.table import Table
 from rich.text import Text
 
 from shipshape.evaluation import EvalResult
-from shipshape.export import SKIPPED_HEADING, SKIPPED_NOTE, describe_exclusions, describe_skipped
+from shipshape.export import (
+    GOOD_HEADING,
+    SKIPPED_HEADING,
+    SKIPPED_NOTE,
+    describe_exclusions,
+    describe_skipped,
+    describe_strengths,
+)
 from shipshape.models import (
     Dimension,
     EdgeKind,
@@ -74,6 +81,12 @@ def render_report(report: Report, console: Console) -> None:
         console.print(f"[bold yellow]{SKIPPED_HEADING}[/]: {SKIPPED_NOTE}:")
         for line in skipped:
             console.print(f"  - {line.replace('`', '')}", highlight=False, markup=False)
+        console.print()
+    good = describe_strengths(report)
+    if good:
+        console.print(f"[bold green]{GOOD_HEADING}[/]:")
+        for line in good:
+            console.print(f"  - {line}", highlight=False, markup=False)
         console.print()
 
     if not report.findings:

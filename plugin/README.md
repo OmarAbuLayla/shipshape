@@ -2,7 +2,7 @@
 
 Shipshape as a Claude Code plugin: Claude is the LLM, so no API key is needed. Shipshape's
 engine runs locally as an MCP server and provides what an LLM cannot do reliably on its own:
-deterministic findings and a grade, 25 lessons, and a fix check that every edit must pass
+deterministic findings and a grade, 26 lessons, and a fix check that every edit must pass
 before Claude applies it.
 
 ## Install

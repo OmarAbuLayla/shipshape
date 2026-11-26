@@ -1,6 +1,6 @@
 ---
 name: lesson
-description: Teach the software-engineering concept behind a Shipshape finding (data leakage, random seeds, mutable defaults, closures, and 21 more) with a before and after. Use when the user asks why something Shipshape flagged matters, or wants to learn a concept like these.
+description: Teach the software-engineering concept behind a Shipshape finding (data leakage, random seeds, mutable defaults, closures, training loops, and 21 more) with a before and after. Use when the user asks why something Shipshape flagged matters, or wants to learn a concept like these.
 argument-hint: "[concept, lesson name or check id]"
 ---
 

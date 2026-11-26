@@ -18,6 +18,10 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 |---|---|---|
 | Correctness | `correctness.grouped-split-leakage` | Sample-wise splits (`train_test_split`, `KFold`, `i % 5 == 4`, shuffled indices sliced into parts, `sample(frac=...)` with `drop`) in files and notebooks that also track subjects, patients, papers or similar, without a group-aware splitter |
 | | `correctness.swallowed-exception` | Bare `except:` and `except Exception: pass` without a comment explaining why |
+| | `correctness.missing-zero-grad` | A training loop that calls `backward()` and `step()` but never `zero_grad()`, so gradients pile up across batches (gradient accumulation inside the loop is fine) |
+| | `correctness.missing-eval-mode` | `torch.no_grad()` evaluation in a file that trains but never switches to evaluation mode (`.eval()` or `.train(False)`), so dropout and batch norm stay in training mode |
+| | `correctness.test-set-selection` | Test-named data used to choose the model: as an eval set or for early stopping, or scored in a loop where that score is compared with a `best...` value |
+| | `correctness.silent-data-skip` | Loops that skip a missing file or folder without a word (`if not exists: continue`, `except FileNotFoundError: continue`); folder-listing filters and commented lines are left out |
 | | `correctness.array-none-comparison` | `== None` / `!= None` on a name that clearly holds a pandas or numpy object (assigned from `pd.`/`np.`, used with DataFrame methods, or merged): it crashes in an `if` |
 | Structure | `structure.oversized-file` | Files with 400+ (minor) or 700+ (major) lines of code |
 | | `structure.complex-function` | Cyclomatic complexity of 15 or more (radon) |

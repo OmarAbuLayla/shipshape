@@ -39,7 +39,7 @@ Silent failures are the most expensive kind: the experiment "runs", the numbers 
 
 ## How Shipshape spots it
 
-It flags bare `except:` clauses and `except Exception:` (or `BaseException`) blocks whose body is only `pass`, `...` or `continue`. A comment on the `except` line explaining why the error is safe to ignore counts as handling it on purpose, so such blocks are not flagged. It does not judge whether a more specific handler does the right thing.
+Missing data skipped in a loop without a word (`if not os.path.exists(p): continue`, or `except FileNotFoundError: continue`) is reported as `correctness.silent-data-skip`. `isdir()`/`isfile()` used to filter a folder listing is not a skip, and a line with a comment explaining why is treated as deliberate. It flags bare `except:` clauses and `except Exception:` (or `BaseException`) blocks whose body is only `pass`, `...` or `continue`. A comment on the `except` line explaining why the error is safe to ignore counts as handling it on purpose, so such blocks are not flagged. It does not judge whether a more specific handler does the right thing.
 
 ## Read more
 

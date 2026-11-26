@@ -6,7 +6,7 @@ import ast
 import re
 from typing import ClassVar
 
-from shipshape.astutil import calls, dotted_name, last_name, split_words
+from shipshape.astutil import calls, last_name, split_words
 from shipshape.checks.base import Check, plural
 from shipshape.models import Dimension, Finding, Location, Severity
 from shipshape.project import Project, SourceFile
@@ -266,123 +266,5 @@ class SwallowedException(Check):
             f"or a bare `except:` catches even Ctrl+C. Errors disappear silently, so a "
             f"broken run can look like a successful one. Catch the specific exception you "
             f"expect, and log or re-raise everything else."
-        )
-        return [self.finding(message, locations)]
-
-
-ARRAY_MODULES = frozenset({"pd", "pandas", "np", "numpy"})
-# Methods that only DataFrames, Series or arrays have, or that return one. Not ``join`` or
-# ``copy``: strings and lists have those too.
-FRAME_METHODS = frozenset(
-    {
-        "merge",
-        "groupby",
-        "dropna",
-        "fillna",
-        "isna",
-        "notna",
-        "sort_values",
-        "reset_index",
-        "set_index",
-        "drop_duplicates",
-        "astype",
-        "query",
-        "to_csv",
-        "to_numpy",
-        "reshape",
-    }
-)
-FRAME_ATTRIBUTES = frozenset({"iloc", "loc", "shape", "columns", "dtypes", "values", "ndim"})
-
-
-def _is_array_call(node: ast.expr) -> bool:
-    """``pd.read_csv(...)``, ``np.zeros(...)``, ``df.merge(...)`` and the like."""
-    if not isinstance(node, ast.Call):
-        return False
-    root = dotted_name(node.func).split(".", 1)[0]
-    method = node.func.attr if isinstance(node.func, ast.Attribute) else ""
-    return root in ARRAY_MODULES or method in FRAME_METHODS
-
-
-def _array_names(scope: ast.AST) -> set[str]:
-    """Names in ``scope`` that clearly hold a DataFrame, Series or array."""
-    names: set[str] = set()
-    for node in ast.walk(scope):
-        if isinstance(node, ast.Assign) and _is_array_call(node.value):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            if node.attr in FRAME_ATTRIBUTES or node.attr in FRAME_METHODS:
-                names.add(node.value.id)
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "merge"
-            and node.args
-            and isinstance(node.args[0], ast.Name)
-        ):
-            names.add(node.args[0].id)  # whatever is merged into a DataFrame is one too
-    return names
-
-
-def _none_compared_name(node: ast.Compare) -> str | None:
-    """The name in ``x == None`` / ``None != x``, if that is what ``node`` is."""
-    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.Eq | ast.NotEq):
-        return None
-    left, right = node.left, node.comparators[0]
-    for name, other in ((left, right), (right, left)):
-        if isinstance(name, ast.Name) and isinstance(other, ast.Constant) and other.value is None:
-            return name.id
-    return None
-
-
-def array_none_comparisons(tree: ast.Module) -> list[int]:
-    """Lines comparing a DataFrame or array to None with ``==`` or ``!=``.
-
-    Each function is its own scope; code outside functions is one more scope.
-    """
-    scopes: list[ast.AST] = [
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
-    ]
-    module_level = ast.Module(
-        body=[
-            s
-            for s in tree.body
-            if not isinstance(s, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
-        ],
-        type_ignores=[],
-    )
-    lines: set[int] = set()
-    for scope in [*scopes, module_level]:
-        arrays = _array_names(scope)
-        for node in ast.walk(scope):
-            if isinstance(node, ast.Compare) and _none_compared_name(node) in arrays:
-                lines.add(node.lineno)
-    return sorted(lines)
-
-
-class ArrayNoneComparison(Check):
-    """``df == None`` on a DataFrame or array: compares element-wise and then crashes."""
-
-    id: ClassVar[str] = "correctness.array-none-comparison"
-    title: ClassVar[str] = "`== None` on a DataFrame or array"
-    severity: ClassVar[Severity] = Severity.MAJOR
-    dimension: ClassVar[Dimension] = Dimension.CORRECTNESS
-    concept: ClassVar[str] = "Idiomatic Python"
-
-    def run(self, project: Project) -> list[Finding]:
-        """Flag ``== None`` / ``!= None`` on names that clearly hold pandas or numpy data."""
-        locations = [
-            source.location(line)
-            for source in project.parsed
-            if source.tree is not None
-            for line in array_none_comparisons(source.tree)
-        ]
-        if not locations:
-            return []
-        message = (
-            f"In {plural(len(locations), 'place')}, a DataFrame or array is compared to None "
-            f"with `==` or `!=`. That compares every element, and using the result in an `if` "
-            f'raises "The truth value ... is ambiguous", so the code crashes exactly when the '
-            f"data is there. Use `is None` / `is not None`."
         )
         return [self.finding(message, locations)]

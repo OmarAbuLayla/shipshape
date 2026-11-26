@@ -3,11 +3,8 @@
 import pytest
 
 from shipshape.checks.copies import CopiedFiles, DuplicatedPackage
-from shipshape.checks.correctness import (
-    ArrayNoneComparison,
-    GroupedSplitLeakage,
-    SwallowedException,
-)
+from shipshape.checks.correctness import GroupedSplitLeakage, SwallowedException
+from shipshape.checks.data_handling import ArrayNoneComparison, SilentDataSkip
 from shipshape.checks.readability import PrintDebugging, is_restating
 from shipshape.checks.reproducibility import (
     BrokenLocalImport,
@@ -19,6 +16,7 @@ from shipshape.checks.ruff import RuffCheck
 from shipshape.checks.security import EnvFileNotIgnored, HardcodedSecret, _gitignore_covers
 from shipshape.checks.structure import UnusedModule
 from shipshape.checks.testing import UntestedModules
+from shipshape.checks.training import MissingEvalMode, MissingZeroGrad, TestSetSelection
 from shipshape.models import Dimension, Finding, Location, Severity
 from shipshape.scoring import dimension_scores, overall_grade
 
@@ -439,3 +437,56 @@ def test_path_templates_are_not_hard_coded_paths(make_project: MakeProject) -> N
 )
 def test_informative_comments_are_not_restating(comment: str) -> None:
     assert not is_restating(comment, "inputs = inputs.reshape(inputs.shape[0], -1)")
+
+
+def test_choosing_on_validation_while_printing_test_is_fine(make_project: MakeProject) -> None:
+    code = (
+        "best_val = 0\n"
+        "for epoch in range(10):\n"
+        "    val_acc = evaluate(model, val_loader)\n"
+        "    test_acc = evaluate(model, test_loader)\n"
+        "    print(test_acc)\n"
+        "    if val_acc > best_val:\n"
+        "        best_val = val_acc\n"
+    )
+    assert TestSetSelection().run(make_project({"train.py": code})) == []
+
+
+def test_test_set_as_eval_set_is_selection(make_project: MakeProject) -> None:
+    code = "model.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=10)\n"
+    (finding,) = TestSetSelection().run(make_project({"train.py": code}))
+    assert finding.locations[0].start_line == 1
+
+
+def test_missing_file_errors_skipped_in_a_loop(make_project: MakeProject) -> None:
+    code = (
+        "for path in paths:\n"
+        "    try:\n"
+        "        rows.append(load(path))\n"
+        "    except FileNotFoundError:\n"
+        "        continue\n"
+        "for path in paths:\n"
+        "    if not path.exists():  # optional recordings, see README\n"
+        "        continue\n"
+    )
+    (finding,) = SilentDataSkip().run(make_project({"load.py": code}))
+    assert [loc.start_line for loc in finding.locations] == [4]
+
+
+def test_zero_grad_before_the_loop_is_not_enough(make_project: MakeProject) -> None:
+    code = (
+        "optimizer.zero_grad()\n"
+        "for x, y in loader:\n"
+        "    loss_fn(model(x), y).backward()\n"
+        "    optimizer.step()\n"
+    )
+    (finding,) = MissingZeroGrad().run(make_project({"train.py": code}))
+    assert finding.locations[0].start_line == 2
+
+
+def test_eval_mode_in_another_file_is_not_checked(make_project: MakeProject) -> None:
+    files = {
+        "train.py": "for x, y in loader:\n    opt.zero_grad()\n    loss(x, y).backward()\n",
+        "evaluate.py": "import torch\n\nwith torch.no_grad():\n    score = model(x)\n",
+    }
+    assert MissingEvalMode().run(make_project(files)) == []

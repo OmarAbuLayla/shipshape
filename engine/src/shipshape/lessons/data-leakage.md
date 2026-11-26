@@ -34,7 +34,7 @@ Leakage produces results that look excellent and do not hold up: 95% accuracy in
 
 ## How Shipshape spots it
 
-It looks for sample-wise splits (`train_test_split`, `KFold`, `ShuffleSplit`, or hand-made ones: `i % 5 == 4`, shuffled indices sliced into train and test, or `df.sample(frac=0.8)` with `df.drop(train.index)`), in scripts and notebooks, in files that also track groups (variables such as `subject`, `patient`, `participant`, `session`), with no group-aware splitter (`GroupKFold`, `GroupShuffleSplit`, `LeaveOneGroupOut`) in sight. Because it cannot know how your data was collected, it phrases this as a question. It misses leakage hidden in custom code, in preprocessing fitted on all data before the split (a scaler, a feature selector), and in how the data was recorded.
+It looks for sample-wise splits (`train_test_split`, `KFold`, `ShuffleSplit`, or hand-made ones: `i % 5 == 4`, shuffled indices sliced into train and test, or `df.sample(frac=0.8)` with `df.drop(train.index)`), in scripts and notebooks, in files that also track groups (variables such as `subject`, `patient`, `participant`, `session`), with no group-aware splitter (`GroupKFold`, `GroupShuffleSplit`, `LeaveOneGroupOut`) in sight. Because it cannot know how your data was collected, it phrases this as a question. Separately, `correctness.test-set-selection` reports data named as the test set used to choose the model: passed as an eval set or for early stopping, or scored inside a loop where that score is compared with a `best...` value. It misses leakage hidden in custom code, in preprocessing fitted on all data before the split (a scaler, a feature selector), and in how the data was recorded.
 
 ## Read more
 

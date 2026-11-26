@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from shipshape.lessons import all_lessons
 from shipshape.llm.client import Completion, FatalLLMError, Message
 from shipshape.models import SCHEMA_VERSION
 
@@ -338,7 +339,7 @@ def test_lessons(client: TestClient) -> None:
     listing = client.get("/api/lessons").json()
     lesson = client.get("/api/lessons/correctness.grouped-split-leakage").json()
 
-    assert len(listing) == 25 and all(item["body"] == "" for item in listing)
+    assert len(listing) == len(all_lessons()) and all(item["body"] == "" for item in listing)
     assert lesson["slug"] == "data-leakage" and "## The idea" in lesson["body"]
     assert client.get("/api/lessons/nope").status_code == 404
 

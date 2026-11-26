@@ -16,7 +16,13 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from shipshape.analyzer import analyze_project
-from shipshape.export import SKIPPED_NOTE, describe_exclusions, describe_skipped, format_location
+from shipshape.export import (
+    SKIPPED_NOTE,
+    describe_exclusions,
+    describe_skipped,
+    describe_strengths,
+    format_location,
+)
 from shipshape.lessons import all_lessons, find_lesson
 from shipshape.llm.context import FindingContext, Redactions
 from shipshape.llm.validate import FixRejectedError, ValidatedFix, validate_fix
@@ -112,6 +118,9 @@ def report_text(report: Report, max_findings: int = DEFAULT_MAX_FINDINGS) -> str
     skipped = describe_skipped(report)
     if skipped:
         lines.append(f"NOT ANALYSED. {SKIPPED_NOTE}: " + "; ".join(skipped))
+    good = describe_strengths(report)
+    if good:
+        lines.append("Already good (say so to the user): " + " ".join(good))
     lines.append("")
     for number, finding in enumerate(report.findings[:max_findings], start=1):
         lines += _finding_lines(number, finding)

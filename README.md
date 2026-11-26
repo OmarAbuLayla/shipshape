@@ -12,7 +12,7 @@ It is built first for people whose code gets judged by someone else (researchers
 
 ```mermaid
 flowchart LR
-    A[Scan a folder<br/>or a zip] --> B[33 checks<br/>static, nothing executed]
+    A[Scan a folder<br/>or a zip] --> B[37 checks<br/>static, nothing executed]
     B --> C[Map: files, imports,<br/>problems pinned]
     C --> D[Zoom in: functions<br/>and the exact lines]
     B --> E[Optional AI explanation<br/>+ verified fix]
@@ -20,9 +20,9 @@ flowchart LR
     D --> G[Lesson for the<br/>concept behind it]
 ```
 
-- **Find.** 22 custom checks plus 11 curated ruff rules, in six dimensions (correctness, structure, reproducibility, readability, testing, security), with a scorecard and grade. Every check is measured against a corpus of small projects with planted problems: all found, no false positives. Files Shipshape cannot read are listed in every report, so nothing is skipped silently.
+- **Find.** 26 custom checks plus 11 curated ruff rules, including PyTorch training-loop bugs (no `zero_grad`, no `eval()`, the test set used to pick the best epoch), in six dimensions (correctness, structure, reproducibility, readability, testing, security), with a scorecard and grade. Every check is measured against a corpus of small projects with planted problems: all found, no false positives. Files Shipshape cannot read are listed in every report, so nothing is skipped silently, and every report also says which dimensions are already in good shape.
 - **See.** An architecture map of folders, files and imports, with each finding pinned where it happens, missing pieces (no tests, no environment file) drawn as ghosts, and data read from outside the project. Double-click a file to zoom into its functions and classes, then into the code with the flagged lines marked.
-- **Understand.** With an LLM key, each finding gets a plain-language explanation of what is going on in *this* code, why it matters, and how to fix it. Every finding also links to a hand-written lesson on the concept behind it (25 lessons, from data leakage to mutable defaults), with a before and after and an honest note on what Shipshape cannot detect.
+- **Understand.** With an LLM key, each finding gets a plain-language explanation of what is going on in *this* code, why it matters, and how to fix it. Every finding also links to a hand-written lesson on the concept behind it (26 lessons, from data leakage to training loops), with a before and after and an honest note on what Shipshape cannot detect.
 - **Fix.** Proposed fixes are only shown if, applied in memory, the code still parses, the problem is gone and no other check finds anything new. Tick the ones you want and press "Apply": they are applied one at a time to a copy, each verified again against the code the earlier ones left. A fix that collides with an earlier one is regenerated against the fixed code in a second round. The copy is scanned again and a before/after page shows the grade and every score, with a `git apply` patch or a fixed zip to download. Your files are never changed.
 - **Track.** A local profile shows which concepts keep coming up across your projects and which you have resolved, built only from your scan history.
 - **Export.** Findings, explanations and fixes as Markdown, JSON or CSV, with or without AI.
