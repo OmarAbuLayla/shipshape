@@ -20,7 +20,7 @@ Code's default 30 seconds for an MCP server. Claude Code then skips the server f
 Two ways around it:
 
 - Build it once in a terminal: run
-  `uvx --from "git+https://github.com/OmarAbuLayla/shipshape@v0.8.0#subdirectory=engine" shipshape-mcp`,
+  `uvx --from "git+https://github.com/OmarAbuLayla/shipshape@v0.8.1#subdirectory=engine" shipshape-mcp`,
   wait until it sits silently (the server is running), stop it with Ctrl+C, then restart Claude
   Code. Later starts take about 10 seconds.
 - Or give MCP servers more time: add `"env": { "MCP_TIMEOUT": "120000" }` to
@@ -31,8 +31,8 @@ skills tell it to wait and look again before giving up.
 
 ## Versions
 
-The plugin pins the engine to the release tag that matches its own version (`v0.8.0` for plugin
-0.8.0), so pushes to `main` never change an installed plugin. Update with
+The plugin pins the engine to the release tag that matches its own version (`v0.8.1` for plugin
+0.8.1), so pushes to `main` never change an installed plugin. Update with
 `/plugin marketplace update shipshape` and `/plugin install shipshape@shipshape`; the first
 start after an update builds the new engine once. A release bumps `plugin.json` and the tag in
 `.mcp.json` together (a test checks they match), then tags that commit.

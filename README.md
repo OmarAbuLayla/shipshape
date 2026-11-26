@@ -90,7 +90,7 @@ The same four tools (`scan`, `verify_fix`, `lesson`, `map`) work in any MCP clie
   "mcpServers": {
     "shipshape": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/OmarAbuLayla/shipshape@v0.8.0#subdirectory=engine", "shipshape-mcp"]
+      "args": ["--from", "git+https://github.com/OmarAbuLayla/shipshape@v0.8.1#subdirectory=engine", "shipshape-mcp"]
     }
   }
 }

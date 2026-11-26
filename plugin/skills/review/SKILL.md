@@ -16,6 +16,8 @@ shipshape MCP server): the server may still be starting. The first start after a
 update builds the engine and can take a minute. Wait a few seconds and look for the tools
 again, up to about a minute, before saying they are missing. Never fall back to a review
 without them; if they still don't appear, tell the user to restart Claude Code.
+Load the tools in this conversation before starting the `shipshape-reviewer` subagent: it
+cannot search for tools itself and stops if they are not there yet.
 
 1. **Pick the folder.** Use `$ARGUMENTS` if given, otherwise the current working directory.
    Pass an absolute path to the tools.
