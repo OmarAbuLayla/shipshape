@@ -35,8 +35,8 @@ const BoxNode = memo(function BoxNode({ data }: NodeProps<Node<BoxData>>) {
   return (
     <div className={classes.join(" ")} style={{ width: nodeWidth(view), height: NODE_HEIGHT }}>
       <Handle type="target" position={vertical ? Position.Top : Position.Left} />
-      <div className="n">{view.label}</div>
-      <div className="s">{view.sub}</div>
+      <div className="n" title={view.label}>{view.label}</div>
+      <div className="s" title={view.sub}>{view.sub}</div>
       {view.findings.length > 0 && view.severity && <span className={`badge ${view.severity}`}>{view.findings.length}</span>}
       {view.kind === "folder" && view.folder && (
         <button
@@ -61,7 +61,7 @@ const GroupNode = memo(function GroupNode({ data }: NodeProps<Node<BoxData>>) {
   return (
     <div className={`group-node ${highlighted ? "highlight" : ""}`}>
       <div className="gl">
-        {view.label}
+        <span title={view.label}>{view.label}</span>
         {view.folder && (
           <button
             style={{ border: 0, background: "none", cursor: "pointer", padding: 0, font: "inherit" }}
