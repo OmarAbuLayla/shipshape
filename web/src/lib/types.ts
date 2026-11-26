@@ -254,6 +254,44 @@ export interface ScanSummary {
   findings: number | null;
 }
 
+export interface AgentStep {
+  number: number;
+  tool: string;
+  detail: string;
+  result: string;
+  ok: boolean;
+}
+
+export interface AgentRun {
+  model: string;
+  steps: AgentStep[];
+  stopped_because: string;
+  summary: string;
+  fixes_applied: string[];
+  gave_up_on: string[];
+  before_grade: string;
+  after_grade: string;
+  before_scores: Partial<Record<Dimension, number>>;
+  after_scores: Partial<Record<Dimension, number>>;
+  changed_files: string[];
+  patch: string;
+  turns: number;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number | null;
+}
+
+export interface AgentState {
+  scan_id: string;
+  status: "running" | "done" | "failed";
+  max_steps: number;
+  max_cost_usd: number;
+  steps: AgentStep[];
+  run: AgentRun | null;
+  error: string;
+  zip_available: boolean;
+}
+
 export interface Health {
   status: string;
   api_version: string;

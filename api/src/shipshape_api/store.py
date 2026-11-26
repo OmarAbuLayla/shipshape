@@ -27,12 +27,13 @@ CREATE TABLE IF NOT EXISTS scans (
     findings INTEGER,
     report TEXT,
     root TEXT,
-    fixes TEXT
+    fixes TEXT,
+    agent TEXT
 )
 """
 
 
-COLUMNS_ADDED_LATER = ("root", "fixes")
+COLUMNS_ADDED_LATER = ("root", "fixes", "agent")
 
 
 class ScanStatus(StrEnum):
@@ -173,6 +174,16 @@ class ScanStore:
         """Remember the latest fix run (replacing an earlier one)."""
         with self._lock:
             self._db.execute("UPDATE scans SET fixes = ? WHERE id = ?", (payload, scan_id))
+            self._db.commit()
+
+    def agent(self, scan_id: str) -> str | None:
+        """The last finished agent run of this scan as JSON text, or ``None``."""
+        return self._column(scan_id, "agent")
+
+    def save_agent(self, scan_id: str, payload: str) -> None:
+        """Remember the latest agent run (replacing an earlier one)."""
+        with self._lock:
+            self._db.execute("UPDATE scans SET agent = ? WHERE id = ?", (payload, scan_id))
             self._db.commit()
 
     def _column(self, scan_id: str, column: str) -> str | None:

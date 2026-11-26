@@ -26,7 +26,7 @@ flowchart LR
 - **Fix.** Proposed fixes are only shown if, applied in memory, the code still parses, the problem is gone and no other check finds anything new. Tick the ones you want and press "Apply": they are applied one at a time to a copy, each verified again against the code the earlier ones left. A fix that collides with an earlier one is regenerated against the fixed code in a second round. The copy is scanned again and a before/after page shows the grade and every score, with a `git apply` patch or a fixed zip to download. Your files are never changed.
 - **Track.** A local profile shows which concepts keep coming up across your projects and which you have resolved, built only from your scan history.
 - **Export.** Findings, explanations and fixes as Markdown, JSON or CSV, with or without AI.
-- **Let an agent do it.** `shipshape agent` lets an LLM work through the findings with tools: it reads the code, proposes one fix at a time, and Shipshape verifies each before applying it to a copy. Step and cost limits, a stop after repeated rejections, and a step-by-step log keep it under control.
+- **Let an agent do it.** From the web app (watch every step live) or with `shipshape agent`, an LLM works through the findings with tools: it reads the code, proposes one fix at a time, and Shipshape verifies each before applying it to a copy. Step and cost limits, a stop after repeated rejections, and a step-by-step log keep it under control.
 - **Or inside Claude Code.** A plugin brings the checks, the fix verification and the lessons into Claude Code, with Claude as the LLM, so no API key is needed.
 
 ## Shipshape reviewed itself

@@ -171,7 +171,7 @@ export function Home({ llmReady, llmLabel }: { llmReady: boolean; llmLabel: stri
         </form>
 
         <div className="how">
-          <div><span>1 · analyze</span><b>29 checks</b><p>Leakage, seeds, paths, secrets, structure, tests.</p></div>
+          <div><span>1 · analyze</span><b>37 checks</b><p>Leakage, seeds, paths, secrets, training loops, copies, tests.</p></div>
           <div><span>2 · map</span><b>Your architecture</b><p>Files, imports and problems in one picture.</p></div>
           <div><span>3 · explain</span><b>Verified fixes</b><p>Every fix is re-checked before it is shown.</p></div>
         </div>

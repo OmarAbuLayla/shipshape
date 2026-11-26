@@ -1,6 +1,6 @@
 // Thin, typed wrapper around the local Shipshape API.
 
-import type { FixRun, Health, Lesson, Profile, Report, ScanSummary, SourceText } from "./types";
+import type { AgentState, FixRun, Health, Lesson, Profile, Report, ScanSummary, SourceText } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -54,6 +54,13 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ findings }),
+    }),
+  agent: (id: string) => request<AgentState>(`/api/scans/${id}/agent`),
+  startAgent: (id: string) =>
+    request<AgentState>(`/api/scans/${id}/agent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
     }),
   scanUpload: (file: File, explain: boolean, maxFindings: number) => {
     const form = new FormData();

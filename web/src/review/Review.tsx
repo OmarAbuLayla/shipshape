@@ -204,6 +204,13 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
               {applying ? "Applying fixes..." : `Apply ${plural(chosen.size, "fix", "fixes")}`}
             </button>
           )}
+          <Link
+            className="btn small"
+            to={`/scans/${scan.id}/agent`}
+            title="Let an AI agent fix findings step by step; Shipshape verifies every fix. Works on a copy."
+          >
+            Agent
+          </Link>
           <ExportMenu scanId={scan.id} />
           <Link className="btn small" to="/">New scan</Link>
         </div>

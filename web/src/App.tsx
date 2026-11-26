@@ -5,6 +5,7 @@ import { Moon, Sun } from "./components/icons";
 import { providerName } from "./lib/format";
 import { useHealth, useTheme } from "./lib/hooks";
 import { FixesPage } from "./pages/FixesPage";
+import { AgentPage } from "./pages/AgentPage";
 import { History } from "./pages/History";
 import { Lessons } from "./pages/Lessons";
 import { Profile } from "./pages/Profile";
@@ -60,6 +61,7 @@ export function App() {
           <Route path="/" element={<Home llmReady={!!llm?.configured} llmLabel={llm ? providerName(llm.provider) : null} />} />
           <Route path="/scans/:id" element={<ScanPage />} />
           <Route path="/scans/:id/fixes" element={<FixesPage />} />
+          <Route path="/scans/:id/agent" element={<AgentPage />} />
           <Route path="/history" element={<History />} />
           <Route path="/lessons" element={<Lessons />} />
           <Route path="/profile" element={<Profile />} />

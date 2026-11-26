@@ -148,7 +148,7 @@ function FixResult({ scan, run }: { scan: ScanSummary; run: FixRun }) {
   );
 }
 
-function Patch({ text }: { text: string }) {
+export function Patch({ text }: { text: string }) {
   return (
     <pre className="patch" aria-label="Combined patch">
       {text.split("\n").map((line, i) => {

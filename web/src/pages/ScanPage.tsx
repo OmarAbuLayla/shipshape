@@ -84,7 +84,7 @@ function Progress({ scan }: { scan: ScanSummary | null }) {
   const fraction = match ? Number(match[1]) / Math.max(Number(match[2]), 1) : null;
   const steps = [
     { label: "Reading the project", done: scan !== null && scan.status !== "queued" },
-    { label: "Running 29 checks and drawing the map", done: explaining },
+    { label: "Running all checks and drawing the map", done: explaining },
     ...(scan?.explain ? [{ label: scan.progress && explaining ? scan.progress : "Explaining findings with AI", done: false }] : []),
   ];
   const current = steps.findIndex((s) => !s.done);

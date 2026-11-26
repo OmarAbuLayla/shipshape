@@ -399,8 +399,8 @@ a.btn.primary { color: var(--on-primary); }
   width: 100%; height: 100%; cursor: pointer;
 }
 .group-node .gl {
-  position: absolute; top: 8px; left: 12px; font: 700 12px var(--font-mono); color: var(--muted);
-  display: flex; gap: 8px; align-items: center;
+  position: absolute; top: 8px; left: 12px; right: 12px; font: 700 12px var(--font-mono); color: var(--muted);
+  display: flex; gap: 8px; align-items: center; min-width: 0;
 }
 .group-node .gl span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .group-node .gl button { flex: none; }
@@ -555,6 +555,30 @@ a.btn.primary { color: var(--on-primary); }
   .fix-grid { grid-template-columns: 1fr; }
 }
 
+/* Agent */
+.agent-start { margin-top: 20px; padding: 18px 20px; display: grid; gap: 12px; justify-items: start; max-width: 760px; }
+.agent-start p { margin: 0; font-size: 14px; }
+.agent-wait { margin-top: 20px; }
+.agent-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.agent-step {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: start;
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface);
+  font-size: 13.5px;
+}
+.agent-step .num { color: var(--faint); font-size: 12px; padding-top: 1px; }
+.agent-step .step-detail { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.agent-step .reason { display: block; margin-top: 4px; color: var(--crit); font-size: 12.5px; overflow-wrap: anywhere; }
+.agent-step.passed { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 7%, var(--surface)); }
+.agent-step.rejected { border-color: var(--crit); background: color-mix(in srgb, var(--crit) 6%, var(--surface)); }
+.agent-step.error { border-style: dashed; }
+.agent-step.pending { color: var(--muted); display: block; animation: pulse 1.2s ease-in-out infinite; }
+.agent-step .tag { font: 600 11px var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 99px; }
+.agent-step .tag.passed { color: var(--ok); border: 1px solid var(--ok); }
+.agent-step .tag.rejected { color: var(--crit); border: 1px solid var(--crit); }
+.agent-summary { max-width: 760px; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .agent-step.pending { animation: none; } }
+
 /* File view: one file zoomed in, its blocks above and its code below */
 .file-col { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 .file-col > .map-col { flex: 1 1 45%; min-height: 200px; border-bottom: 1px solid var(--line); }
@@ -661,3 +685,4 @@ button.concept:hover { border-color: var(--accent); }
   .brand img { height: 32px; }
   .topbar .right .llm-pill { display: none; }
 }
+.agent h2 .small { font-size: 13px; font-weight: 400; }

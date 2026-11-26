@@ -26,6 +26,16 @@ from shipshape.models import Report
 from shipshape.project import Project
 
 from shipshape_api import __version__, fixes, source
+from shipshape_api.agent_jobs import (
+    AgentBusyError,
+    AgentRunner,
+    AgentStart,
+    AgentState,
+    ToolClientFactory,
+    agent_zip_path,
+    default_tool_client,
+    forget_agent,
+)
 from shipshape_api.fixes import FixRequest, FixRunResponse
 from shipshape_api.jobs import ClientFactory, ScanJob, ScanRunner, default_client_factory
 from shipshape_api.profile import Profile, build_profile
@@ -100,16 +110,19 @@ def create_app(
     data_dir: Path | None = None,
     client_factory: ClientFactory = default_client_factory,
     web_dist: Path | None = None,
+    tool_client_factory: ToolClientFactory = default_tool_client,
 ) -> FastAPI:
     """Build the app. Tests pass a temporary ``data_dir`` and a fake ``client_factory``."""
     data_dir = data_dir or default_data_dir()
     store = ScanStore(data_dir / "scans.sqlite3")
     runner = ScanRunner(store, client_factory)
+    agents = AgentRunner(store, data_dir, tool_client_factory)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
         runner.shutdown()
+        agents.shutdown()
 
     app = FastAPI(title="Shipshape", version=__version__, lifespan=lifespan)
     app.state.store = store
@@ -301,12 +314,58 @@ def create_app(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
+    @app.post("/api/scans/{scan_id}/agent", status_code=202)
+    def start_agent(scan_id: str, limits: AgentStart) -> AgentState:
+        """Let the agent fix this scan's project on a copy, in the background (LLM calls)."""
+        summary = store.get(scan_id)
+        if summary is None:
+            raise HTTPException(404, "No such scan.")
+        if store.report(scan_id) is None:
+            raise HTTPException(409, "The report is not ready.")
+        if not _llm_status().configured:
+            raise HTTPException(409, "The agent needs an LLM key: see .env.example.")
+        try:
+            return agents.start(summary, store.root(scan_id), limits)
+        except AgentBusyError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.get("/api/scans/{scan_id}/agent")
+    def agent_state(scan_id: str) -> AgentState:
+        """The running or last agent run of this scan: steps so far, then the result."""
+        state = agents.state(scan_id)
+        if state is None:
+            raise HTTPException(404, "The agent has not worked on this scan yet.")
+        return state
+
+    @app.get("/api/scans/{scan_id}/agent/download")
+    def download_agent(scan_id: str, format: fixes.DownloadFormat) -> Response:
+        """The last agent run as a ``.patch`` file or a zip of the fixed project."""
+        summary = store.get(scan_id)
+        state = agents.state(scan_id)
+        if summary is None or state is None or state.run is None:
+            raise HTTPException(404, "No finished agent run for this scan.")
+        name = _safe_name(summary.name)
+        if format is fixes.DownloadFormat.PATCH:
+            body = state.run.patch.encode("utf-8")
+            media, filename = "text/x-diff; charset=utf-8", f"{name}-agent.patch"
+        else:
+            path = agent_zip_path(data_dir, scan_id)
+            if not path.is_file():
+                raise HTTPException(404, "No zip for this agent run; download the patch instead.")
+            body, media, filename = path.read_bytes(), "application/zip", f"{name}-agent.zip"
+        return Response(
+            body,
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     @app.delete("/api/scans/{scan_id}", status_code=204)
     def delete_scan(scan_id: str) -> None:
         """Forget a scan."""
         if not store.delete(scan_id):
             raise HTTPException(404, "No such scan.")
         fixes.forget(data_dir, scan_id)
+        forget_agent(data_dir, scan_id)
 
     dist = (web_dist or REPO_ROOT / "web" / "dist").resolve()
     if (dist / "index.html").is_file():

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
 
@@ -71,17 +73,13 @@ def forget(data_dir: Path, scan_id: str) -> None:
     zip_path(data_dir, scan_id).unlink(missing_ok=True)
 
 
-def run(
-    data_dir: Path,
-    summary: ScanSummary,
-    root: str | None,
-    report: Report,
-    indices: list[int],
-    regenerate: Regenerate | None = None,
-) -> FixRunResponse:
-    """Apply the chosen fixes to a copy of the scanned project and store the fixed zip."""
-    if any(i < 0 or i >= len(report.findings) for i in indices):
-        raise FixUnavailableError("Unknown finding number.")
+@contextmanager
+def project_copy(data_dir: Path, summary: ScanSummary, root: str | None) -> Iterator[Project]:
+    """The scanned project, loaded fresh: the folder as it is now, or the kept upload unpacked.
+
+    Raises :class:`FixUnavailableError` if neither is available any more. Nothing is written to
+    the folder; an unpacked upload is deleted afterwards.
+    """
     workdir: Path | None = None
     try:
         if summary.source == "upload":
@@ -97,7 +95,24 @@ def run(
             if root is None or not Path(root).is_dir():
                 raise FixUnavailableError("The scanned folder no longer exists.")
             project_root = Path(root)
-        project = Project.load(project_root)
+        yield Project.load(project_root)
+    finally:
+        if workdir is not None:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+
+def run(
+    data_dir: Path,
+    summary: ScanSummary,
+    root: str | None,
+    report: Report,
+    indices: list[int],
+    regenerate: Regenerate | None = None,
+) -> FixRunResponse:
+    """Apply the chosen fixes to a copy of the scanned project and store the fixed zip."""
+    if any(i < 0 or i >= len(report.findings) for i in indices):
+        raise FixUnavailableError("Unknown finding number.")
+    with project_copy(data_dir, summary, root) as project:
         result = apply_fixes(project, report, indices, regenerate)
         response = FixRunResponse(**result.run.model_dump())
         target = zip_path(data_dir, summary.id)
@@ -112,6 +127,3 @@ def run(
                 target.write_bytes(data)
                 response.zip_available = True
         return response
-    finally:
-        if workdir is not None:
-            shutil.rmtree(workdir, ignore_errors=True)
