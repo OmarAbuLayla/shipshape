@@ -39,6 +39,11 @@ the engine again.
 
 Claude can also use the skills on its own when you ask it to review or fix a Python project.
 
+The bundled `shipshape-reviewer` subagent runs a whole review in its own context (scan, read
+the flagged code, look for leakage and training-loop bugs static checks miss, verify up to three
+fixes) and returns a short report, so the main conversation is not flooded with file contents.
+Claude uses it on its own for review requests, or ask for it by name.
+
 ## Tools
 
 The MCP server (`shipshape-mcp`) offers `scan`, `verify_fix`, `lesson` and `map`. It never

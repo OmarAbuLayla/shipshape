@@ -19,7 +19,7 @@ from shipshape.analyzer import analyze_project
 from shipshape.export import SKIPPED_NOTE, describe_exclusions, describe_skipped, format_location
 from shipshape.lessons import all_lessons, find_lesson
 from shipshape.llm.context import FindingContext, Redactions
-from shipshape.llm.validate import FixRejectedError, validate_fix
+from shipshape.llm.validate import FixRejectedError, ValidatedFix, validate_fix
 from shipshape.models import Dimension, Edit, Finding, Report, Severity
 from shipshape.project import Project
 from shipshape.scoring import GRADES, PENALTY
@@ -136,8 +136,13 @@ def scan(path: str, max_findings: int = DEFAULT_MAX_FINDINGS) -> str:
     return report_text(analyze_project(load_project(path)), max_findings)
 
 
-def _context(project: Project, findings: Iterable[Finding]) -> FindingContext:
-    """Fix gates for an assistant that can see every file: any ``.py`` file may be edited."""
+def _context(
+    project: Project, findings: Iterable[Finding], redactions: Redactions | None = None
+) -> FindingContext:
+    """Fix gates for an assistant that can see every file: any ``.py`` file may be edited.
+
+    ``redactions`` maps the placeholders the assistant saw back to the real secrets.
+    """
     python = {s.path for s in project.python_files}
     located = tuple(
         (loc.path, loc.start_line)
@@ -145,7 +150,7 @@ def _context(project: Project, findings: Iterable[Finding]) -> FindingContext:
         for loc in finding.locations
         if loc.path in python and loc.start_line is not None and loc.cell is None
     )
-    return FindingContext("", tuple(sorted(python)), located, Redactions())
+    return FindingContext("", tuple(sorted(python)), located, redactions or Redactions())
 
 
 def _as_edit(project: Project, number: int, proposed: ProposedEdit) -> Edit:
@@ -185,6 +190,30 @@ def _elsewhere(findings: list[Finding], touched: set[str]) -> str:
     return f" It is still reported elsewhere, untouched by these edits: {shown}."
 
 
+def check_edits(
+    project: Project,
+    report: Report,
+    check_id: str,
+    edits: list[ProposedEdit],
+    redactions: Redactions | None = None,
+) -> tuple[ValidatedFix, str]:
+    """Run the fix gates on ``edits`` for ``check_id`` in ``report``; nothing is written.
+
+    Returns the validated fix and a note on places still reported in untouched files.
+    Raises :class:`AssistError` for unusable requests and :class:`FixRejectedError` when a
+    gate fails.
+    """
+    matching = [f for f in report.findings if f.check_id == check_id]
+    if not matching:
+        raise AssistError(
+            f"The current scan has no {check_id} finding. It may be fixed already; scan again."
+        )
+    resolved = [_as_edit(project, n, edit) for n, edit in enumerate(edits, start=1)]
+    context = _context(project, matching, redactions)
+    validated = validate_fix(project, context, matching[0], resolved)
+    return validated, _elsewhere(matching, set(validated.new_texts))
+
+
 def verify_edits(path: str, check_id: str, edits: list[ProposedEdit]) -> str:
     """Run the fix gates on ``edits`` for the problem ``check_id`` reports, in memory only.
 
@@ -193,18 +222,11 @@ def verify_edits(path: str, check_id: str, edits: list[ProposedEdit]) -> str:
     check reports more problems there than before. Raises :class:`FixRejectedError` otherwise.
     """
     project = load_project(path)
-    report = analyze_project(project)
-    matching = [f for f in report.findings if f.check_id == check_id]
-    if not matching:
-        raise AssistError(
-            f"The current scan has no {check_id} finding. It may be fixed already; scan again."
-        )
-    resolved = [_as_edit(project, n, edit) for n, edit in enumerate(edits, start=1)]
-    validated = validate_fix(project, _context(project, matching), matching[0], resolved)
+    validated, elsewhere = check_edits(project, analyze_project(project), check_id, edits)
     touched = set(validated.new_texts)
     return (
         f"PASSED. The edits remove {check_id} from {', '.join(sorted(touched))} without new "
-        f"problems.{_elsewhere(matching, touched)} Apply exactly these edits now, then run the "
+        f"problems.{elsewhere} Apply exactly these edits now, then run the "
         "project's tests if it has any: Shipshape never runs code, so it cannot prove the "
         "behaviour is unchanged."
     )

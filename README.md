@@ -26,6 +26,7 @@ flowchart LR
 - **Fix.** Proposed fixes are only shown if, applied in memory, the code still parses, the problem is gone and no other check finds anything new. Tick the ones you want and press "Apply": they are applied one at a time to a copy, each verified again against the code the earlier ones left. A fix that collides with an earlier one is regenerated against the fixed code in a second round. The copy is scanned again and a before/after page shows the grade and every score, with a `git apply` patch or a fixed zip to download. Your files are never changed.
 - **Track.** A local profile shows which concepts keep coming up across your projects and which you have resolved, built only from your scan history.
 - **Export.** Findings, explanations and fixes as Markdown, JSON or CSV, with or without AI.
+- **Let an agent do it.** `shipshape agent` lets an LLM work through the findings with tools: it reads the code, proposes one fix at a time, and Shipshape verifies each before applying it to a copy. Step and cost limits, a stop after repeated rejections, and a step-by-step log keep it under control.
 - **Or inside Claude Code.** A plugin brings the checks, the fix verification and the lessons into Claude Code, with Claude as the LLM, so no API key is needed.
 
 ## Shipshape reviewed itself
@@ -64,6 +65,7 @@ The command line works without the web app:
 shipshape analyze path/to/project                 # findings and scorecard
 shipshape analyze path/to/project --explain       # plus explanations and verified fixes
 shipshape fix path/to/project --patch fixes.patch # apply verified fixes to a copy, write a patch
+shipshape agent path/to/project --patch agent.patch --log agent.md   # let the agent fix, verified
 shipshape map path/to/project --html map.html     # quick standalone map
 shipshape lessons data-leakage                    # the lesson behind a check
 ```
@@ -76,7 +78,7 @@ Shipshape also runs as a [Claude Code](https://code.claude.com) plugin. Claude e
 /plugin install shipshape --marketplace OmarAbuLayla/shipshape
 ```
 
-Then `/shipshape:review` explains what an engineer would object to, `/shipshape:fix` fixes findings with verified edits and scans again, and `/shipshape:lesson data-leakage` teaches a concept. The plugin has no interactive map, before/after page or profile, and its fixes change your real files (it asks you to commit first), while the web app always works on a copy. See the [plugin README](plugin/README.md).
+Then `/shipshape:review` explains what an engineer would object to (or the bundled `shipshape-reviewer` subagent does the whole review in its own context and returns a short report), `/shipshape:fix` fixes findings with verified edits and scans again, and `/shipshape:lesson data-leakage` teaches a concept. The plugin has no interactive map, before/after page or profile, and its fixes change your real files (it asks you to commit first), while the web app always works on a copy. See the [plugin README](plugin/README.md).
 
 ## Leaving things out
 

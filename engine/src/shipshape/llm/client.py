@@ -37,6 +37,38 @@ class Completion:
     seconds: float
 
 
+@dataclass(frozen=True)
+class ToolCall:
+    """One tool the model wants to run: its id, name and JSON-encoded arguments."""
+
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass(frozen=True)
+class ToolTurn:
+    """One answer in a tool-using conversation: text, tool calls, or both, plus its cost."""
+
+    text: str
+    tool_calls: tuple[ToolCall, ...]
+    input_tokens: int
+    cached_input_tokens: int
+    output_tokens: int
+
+
+class ToolChatClient(Protocol):
+    """Anything that can continue a conversation in which the model may call tools."""
+
+    model: str
+
+    def complete_tools(
+        self, messages: Sequence[dict[str, Any]], tools: Sequence[dict[str, Any]]
+    ) -> ToolTurn:
+        """Return the model's next turn; ``tools`` are OpenAI-style function definitions."""
+        ...
+
+
 class ChatClient(Protocol):
     """Anything that can answer a list of chat messages with JSON text."""
 
@@ -119,6 +151,37 @@ class OpenAICompatibleClient:
             cached_input_tokens=_cached_tokens(usage),
             output_tokens=usage.completion_tokens if usage else 0,
             seconds=time.perf_counter() - started,
+        )
+
+    def complete_tools(
+        self, messages: Sequence[dict[str, Any]], tools: Sequence[dict[str, Any]]
+    ) -> ToolTurn:
+        """Continue a conversation in which the model may call ``tools`` (function calling)."""
+        payload: list[Any] = list(messages)
+        tool_list: list[Any] = list(tools)
+        try:
+            response = self._client.chat.completions.create(
+                model=self.model,
+                messages=payload,
+                tools=tool_list,
+                **_limit(self.settings, self.max_tokens),
+            )
+        except openai.OpenAIError as exc:
+            raise _translate(exc, self.settings) from exc
+        message = response.choices[0].message
+        usage = response.usage
+        found: list[ToolCall] = []
+        for call in message.tool_calls or ():
+            function = getattr(call, "function", None)  # custom (non-function) tools are ignored
+            if function is not None:
+                found.append(ToolCall(call.id, function.name, function.arguments or "{}"))
+        calls = tuple(found)
+        return ToolTurn(
+            text=message.content or "",
+            tool_calls=calls,
+            input_tokens=usage.prompt_tokens if usage else 0,
+            cached_input_tokens=_cached_tokens(usage),
+            output_tokens=usage.completion_tokens if usage else 0,
         )
 
 

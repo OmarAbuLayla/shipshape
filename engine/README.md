@@ -78,6 +78,15 @@ shipshape fix path/to/project --only repro.hardcoded-path   # only some checks
 
 The same limit as before applies: Shipshape never runs code, so a verified fix is valid and removes the problem, but run your tests once after applying.
 
+## The agent
+
+```bash
+shipshape agent path/to/project --patch agent.patch --zip fixed.zip --log agent.md
+shipshape agent path/to/project --max-steps 20 --max-cost 0.05
+```
+
+An LLM (the configured provider, with tool calling) works through the findings with four tools: `list_findings`, `read_file`, `propose_fix` and `finish`. The model decides what to look at and what to change; Shipshape decides what is accepted. Every proposed fix goes through the same gates as the verified fixes and is applied only if it passes, to an in-memory copy, so the next step sees the improved code. Guard rails: a limit on model turns (30 by default), an estimated-cost limit ($0.10, enforced for models with a known price), and a doom-loop guard that blocks a finding after three rejected fixes. Credentials are redacted from everything the model reads; a secret line can be replaced by line number without the model ever seeing the value. Every step is printed and can be saved as a Markdown log. The project folder is never changed.
+
 ## Inside a coding assistant (MCP)
 
 `shipshape-mcp` is an MCP server over stdio for Claude Code and other MCP clients; the [plugin](../plugin/README.md) starts it for you. In this mode the assistant is the LLM, and the server offers four tools:

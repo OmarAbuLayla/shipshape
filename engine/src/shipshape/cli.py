@@ -18,6 +18,7 @@ from shipshape import __version__
 from shipshape.analyzer import analyze_project
 from shipshape.checks import RULES, default_checks
 from shipshape.checks.base import plural
+from shipshape.cli_agent import agent_command, refuse_targets_inside
 from shipshape.evaluation import case_root, evaluate, load_corpus, load_manifest
 from shipshape.export import export, format_for_path
 from shipshape.fixes import FixResult, apply_fixes, fixable, project_zip
@@ -168,14 +169,6 @@ def analyze(
             typer.echo(f"\nFindings exported to {export_to}")
 
 
-def _refuse_targets_inside(path: Path, *targets: Path | None) -> None:
-    """Exit if an output file would be written into the project being fixed."""
-    for target in targets:
-        if target is not None and target.resolve().is_relative_to(path.resolve()):
-            typer.echo(f"Error: write {target} outside the project folder.", err=True)
-            raise typer.Exit(code=2)
-
-
 def _fixable_indices(report: Report, only: list[str] | None) -> list[int]:
     return [
         i
@@ -230,7 +223,7 @@ def fix(
     The project folder itself is never changed. Without --patch or --zip, this only shows
     what the fixes would change.
     """
-    _refuse_targets_inside(path, patch, zip_to)
+    refuse_targets_inside(path, patch, zip_to)
     project, report = _scan_project(path, True, max_findings, no_cache)
     chosen = _fixable_indices(report, only)
     if not chosen:
@@ -244,6 +237,9 @@ def fix(
     result = apply_fixes(project, report, chosen, regenerate if second_round else None)
     render_fix_run(result.run, report, Console())
     _write_fix_outputs(result, project, patch, zip_to)
+
+
+app.command("agent")(agent_command)
 
 
 @app.command("map")
