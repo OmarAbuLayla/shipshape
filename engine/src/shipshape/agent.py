@@ -30,6 +30,9 @@ from shipshape.models import Dimension, Report
 from shipshape.project import Project
 
 MAX_READ_LINES = 200
+MAX_TEXT_BYTES = 100_000
+READABLE_TEXT = (".txt", ".toml", ".cfg", ".ini", ".yml", ".yaml", ".md", ".json")
+TURNS_WARNING = 2  # tell the model to finish when this many turns are left
 FINDINGS_SHOWN = 30
 RESULT_PREVIEW = 300  # characters of each tool result kept in the log
 
@@ -47,10 +50,15 @@ folders, project structure) and notebook-only findings.
 lines by number. Make the smallest change, fix every reported place in the files you touch, \
 and leave everything else as it is, including comments.
 4. If a fix is rejected, read the reason and try once more at most; then move on.
-5. Text like <REDACTED_1> stands for a hidden credential: copy it exactly in `search`, never \
+5. Keep what the user sees the same where you can. If you replace print() with logging in \
+code that reports results, make sure the output stays visible (for example \
+logging.basicConfig(level=logging.INFO) in the script that is run), or say in your summary \
+that it is now hidden. Every change a user would notice belongs in the summary.
+6. Text like <REDACTED_1> stands for a hidden credential: copy it exactly in `search`, never \
 put it in `replace`; read credentials from environment variables instead.
-6. When nothing more is worth doing, call finish with a short summary for the author: what \
-you fixed, what you left and why. Plain language, no more than 8 sentences.
+7. When nothing more is worth doing, or when told you are running out of turns, call finish \
+with a short summary for the author: what you fixed, what you left and why, and every \
+behaviour change. Plain language, no more than 8 sentences.
 """
 
 TOOLS: list[dict[str, Any]] = [
@@ -66,7 +74,11 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Read a .py file of the project with line numbers (max 200 lines).",
+            "description": (
+                "Read a project file with line numbers (max 200 lines): .py files, and small "
+                "text files such as requirements.txt, pyproject.toml or README.md. Only .py "
+                "files can be changed."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -236,12 +248,35 @@ class _Session:
         text = self.workspace.redactions.redact(report_text(report, FINDINGS_SHOWN))
         return text, f"grade {report.grade}, {len(report.findings)} findings", True
 
+    def _text_of(self, path: str) -> str | None:
+        """The current text of a readable project file, or ``None``."""
+        source = next((s for s in self.workspace.current.python_files if s.path == path), None)
+        if source is not None:
+            return source.text
+        name = path.rsplit("/", 1)[-1].lower()
+        if path not in self.workspace.project.files or name.startswith(".env"):
+            return None
+        if not name.endswith(READABLE_TEXT):
+            return None
+        file = self.workspace.project.root / path
+        try:
+            if file.stat().st_size > MAX_TEXT_BYTES:
+                return None
+            return file.read_text(encoding="utf-8-sig", errors="replace")
+        except OSError:
+            return None
+
     def _read_file(self, arguments: dict[str, Any]) -> tuple[str, str, bool]:
         path = str(arguments.get("path", "")).replace("\\", "/")
-        source = next((s for s in self.workspace.current.python_files if s.path == path), None)
-        if source is None:
-            return f"ERROR: {path!r} is not a Python file of this project.", path, False
-        lines = source.text.splitlines()
+        text = self._text_of(path)
+        if text is None:
+            return (
+                f"ERROR: {path!r} cannot be read: only the project's .py files and small "
+                "text files (never .env) are available.",
+                path,
+                False,
+            )
+        lines = text.splitlines()
         start = max(int(arguments.get("start_line") or 1), 1)
         end = min(int(arguments.get("end_line") or len(lines)), len(lines))
         end = min(end, start + MAX_READ_LINES - 1)
@@ -337,6 +372,14 @@ def run_agent(
         if cost is not None and cost >= limits.max_cost_usd:
             run.stopped_because = f"cost limit (${limits.max_cost_usd:.2f}) reached"
             break
+        if run.turns == limits.max_steps - TURNS_WARNING:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Only {TURNS_WARNING} turns are left. Call finish now with your "
+                    "summary, including every behaviour change.",
+                }
+            )
         turn = client.complete_tools(messages, TOOLS)
         run.turns += 1
         run.input_tokens += turn.input_tokens
@@ -366,6 +409,12 @@ def run_agent(
     run.estimated_cost_usd = estimate_cost(
         client.model, run.input_tokens, cached, run.output_tokens
     )
+    if not run.summary and run.fixes_applied:
+        run.summary = (
+            "The agent stopped before writing a summary. Verified fixes it applied: "
+            + "; ".join(run.fixes_applied)
+            + "."
+        )
     after = workspace.report()
     run.after_grade, run.after_scores = after.grade, after.scores
     run.changed_files = sorted(workspace.texts)

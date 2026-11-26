@@ -155,3 +155,23 @@ def test_scan_explains_scores_and_notebook_cells(make_project: MakeProject) -> N
     assert "1 major -15" in text
     assert "How the grade works" in text
     assert "counts code cells only" in text
+
+
+def test_growing_past_a_size_threshold_does_not_block_a_fix(make_project: MakeProject) -> None:
+    padding = "".join(f"VALUE_{i} = {i}\n" for i in range(7))
+    paths = 'DATA = "/home/alice/data/raw.csv"\nOUT = "/home/alice/out"\n'
+    project = make_project(
+        {
+            "settings.py": paths,
+            "lib.py": padding + "def f():\n    return 1\n" * 1,
+            "tests/test_lib.py": "import lib\n\n\ndef test_f():\n    assert lib.f() == 1\n",
+        }
+    )
+    fixed = (
+        "import os\n\n"
+        'DATA = os.environ.get("DATA", "data/raw.csv")\n'
+        'OUT = os.environ.get("OUT", "out")\n' + padding
+    )
+    edits = [assist.ProposedEdit(path="settings.py", search=paths, replace=fixed)]
+    message = assist.verify_edits(str(project.root), "repro.hardcoded-path", edits)
+    assert message.startswith("PASSED")

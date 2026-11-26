@@ -190,3 +190,42 @@ def test_agent_command_writes_patch_and_log_outside_the_project(
         cli.app, ["agent", str(project.root), "--log", str(project.root / "l.md")]
     )
     assert inside.exit_code == 2
+
+
+def test_model_is_told_to_finish_before_the_turn_limit(make_project: MakeProject) -> None:
+    project = make_project({"lib.py": LINT})
+    model = ScriptedModel([])
+    run_agent(project, model, AgentLimits(max_steps=5))
+    last_prompt = json.dumps(model.seen[-1])
+    assert "Call finish now" in last_prompt
+    assert "Call finish now" not in json.dumps(model.seen[1])
+
+
+def test_summary_falls_back_to_the_applied_fixes(make_project: MakeProject) -> None:
+    project = make_project({"lib.py": LINT})
+    fix = _call(
+        "propose_fix",
+        check_id="lint.mutable-default",
+        why="default to None",
+        edits=[{"path": "lib.py", "search": LINT, "replace": FIXED}],
+    )
+    result = run_agent(project, ScriptedModel([[fix]]), AgentLimits(max_steps=2))
+    assert "stopped before writing a summary" in result.run.summary
+    assert "default to None" in result.run.summary
+
+
+def test_small_text_files_can_be_read_but_never_env(make_project: MakeProject) -> None:
+    project = make_project(
+        {"lib.py": LINT, "requirements.txt": "pandas\n", ".env": "KEY=secret-value-123\n"}
+    )
+    model = ScriptedModel(
+        [
+            [_call("read_file", path="requirements.txt"), _call("read_file", path=".env")],
+            [_call("finish", summary="done")],
+        ]
+    )
+    result = run_agent(project, model)
+    readme, env = result.run.steps[:2]
+    assert readme.ok and "pandas" in readme.result
+    assert not env.ok
+    assert "secret-value-123" not in json.dumps(model.seen)

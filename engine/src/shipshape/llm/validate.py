@@ -25,6 +25,10 @@ from shipshape.llm.context import FindingContext
 from shipshape.models import Edit, Finding
 from shipshape.project import Project
 
+# Project-wide checks that count modules above a size threshold: a fix that adds a few lines
+# can push a file over it without adding a problem, so they never block a fix.
+NOT_A_NEW_PROBLEM = frozenset({"testing.untested-modules", "testing.no-tests"})
+
 
 class FixRejectedError(ValueError):
     """A gate failed; the message says which one and why, in words the model can act on."""
@@ -118,7 +122,9 @@ def validate_fix(
     new_problems = [
         f"{check_id} ({before[check_id]} -> {count})"
         for check_id, count in sorted(after.items())
-        if check_id != finding.check_id and count > before[check_id]
+        if check_id != finding.check_id
+        and check_id not in NOT_A_NEW_PROBLEM
+        and count > before[check_id]
     ]
     if new_problems:
         raise FixRejectedError(f"the edits introduce new problems: {', '.join(new_problems)}")
