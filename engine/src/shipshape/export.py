@@ -41,6 +41,21 @@ def format_location(location: Location) -> str:
     return text
 
 
+SKIPPED_HEADING = "Not analysed"
+SKIPPED_NOTE = (
+    "Shipshape could not read these files, so any problems in them are missing from the "
+    "findings and the scores"
+)
+
+
+def describe_skipped(report: Report, limit: int = 20) -> list[str]:
+    """One line per file Shipshape could not analyse, with the reason."""
+    lines = [f"`{s.path}`: {s.reason}" for s in report.skipped[:limit]]
+    if len(report.skipped) > limit:
+        lines.append(f"... and {len(report.skipped) - limit} more")
+    return lines
+
+
 def describe_exclusions(exclusions: Exclusions) -> list[str]:
     """One sentence per kind of exclusion; empty when the report covers everything."""
     lines = []
@@ -124,6 +139,11 @@ def to_markdown(report: Report) -> str:
     if excluded:
         lines += ["**Not included in the scores** (on this project's own request):", ""]
         lines += [f"- {line}" for line in excluded]
+        lines.append("")
+    skipped = describe_skipped(report)
+    if skipped:
+        lines += [f"**{SKIPPED_HEADING}.** {SKIPPED_NOTE}:", ""]
+        lines += [f"- {line}" for line in skipped]
         lines.append("")
     stats = report.explain_stats
     if stats is not None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import fnmatch
+import re
 import warnings
 from bisect import bisect_right
 from dataclasses import dataclass, field, replace
@@ -16,6 +17,12 @@ from shipshape.scanner import discover_files
 
 MAX_SOURCE_BYTES = 1_000_000  # larger files are almost always generated or data
 TEST_DIR_NAMES = frozenset({"tests", "test"})
+# A file named like a test is only treated as one if it contains tests: experiment scripts
+# such as perturbation_test.py share the naming pattern.
+TEST_CONTENT = re.compile(
+    r"^\s*(?:async\s+)?def test|^\s*class Test|^\s*(?:import|from)\s+(?:pytest|unittest)\b",
+    re.MULTILINE,
+)
 
 
 def count_code_lines(text: str) -> int:
@@ -36,7 +43,7 @@ def read_source(path: Path) -> tuple[str, tuple[int, ...]] | None:
     try:
         if path.stat().st_size > MAX_SOURCE_BYTES:
             return None
-        raw = path.read_text(encoding="utf-8", errors="replace")
+        raw = path.read_text(encoding="utf-8-sig", errors="replace")  # drop a leading BOM
     except OSError:
         return None
     if path.suffix == ".py":
@@ -45,6 +52,42 @@ def read_source(path: Path) -> tuple[str, tuple[int, ...]] | None:
         return notebook_to_source(raw)
     except NotebookError:
         return None
+
+
+def skipped_sources(project: Project) -> list[tuple[str, str]]:
+    """(path, reason) for every ``.py`` file or notebook the checks never saw."""
+    loaded = {s.path: s for s in project.sources}
+    skipped = []
+    for rel in project.files:
+        if not rel.endswith((".py", ".ipynb")):
+            continue
+        source = loaded.get(rel)
+        if source is None:
+            try:
+                too_big = (project.root / rel).stat().st_size > MAX_SOURCE_BYTES
+            except OSError:
+                too_big = False
+            reason = (
+                "larger than 1 MB, probably generated or data"
+                if too_big
+                else "could not be read (unreadable file or broken notebook)"
+            )
+            skipped.append((rel, reason))
+        elif source.tree is None:
+            skipped.append((rel, f"does not parse as Python ({_parse_error(source.text)})"))
+    return skipped
+
+
+def _parse_error(text: str) -> str:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ast.parse(text)
+    except SyntaxError as exc:
+        return f"line {exc.lineno}: {exc.msg}"
+    except ValueError as exc:
+        return str(exc)
+    return "unknown error"
 
 
 def _parse(text: str) -> ast.Module | None:
@@ -88,13 +131,12 @@ class SourceFile:
 
     @property
     def is_test(self) -> bool:
-        """True for test modules (pytest naming conventions or a ``tests`` folder)."""
-        return (
-            self.name.startswith("test_")
-            or self.name.endswith("_test.py")
-            or self.name == "conftest.py"
-            or any(part in TEST_DIR_NAMES for part in self.dir_parts)
-        )
+        """True for test modules: anything in a ``tests`` folder or ``conftest.py``, and files
+        named like tests (``test_*.py``, ``*_test.py``) that actually contain tests."""
+        if self.name == "conftest.py" or any(part in TEST_DIR_NAMES for part in self.dir_parts):
+            return True
+        named_like_test = self.name.startswith("test_") or self.name.endswith("_test.py")
+        return named_like_test and bool(TEST_CONTENT.search(self.text))
 
     def location(self, start_line: int | None = None, end_line: int | None = None) -> Location:
         """Build a ``Location``, translating notebook lines into (cell, line-in-cell)."""

@@ -9,8 +9,15 @@ from shipshape import __version__
 from shipshape.blocks import file_info
 from shipshape.checks import Check, default_checks
 from shipshape.graph import build_graph
-from shipshape.models import SEVERITY_ORDER, Exclusions, Finding, ProjectStats, Report
-from shipshape.project import Project
+from shipshape.models import (
+    SEVERITY_ORDER,
+    Exclusions,
+    Finding,
+    ProjectStats,
+    Report,
+    SkippedFile,
+)
+from shipshape.project import Project, skipped_sources
 from shipshape.scoring import dimension_scores, overall_grade
 from shipshape.suppress import apply_suppressions
 
@@ -63,6 +70,7 @@ def analyze_project(project: Project, checks: Sequence[Check] | None = None) -> 
         scores=scores,
         grade=overall_grade(scores),
         check_errors=errors,
+        skipped=[SkippedFile(path=p, reason=r) for p, r in skipped_sources(project)],
         graph=graph,
         files=files,
         exclusions=Exclusions(

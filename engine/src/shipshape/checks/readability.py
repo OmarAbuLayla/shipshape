@@ -38,6 +38,8 @@ REASONING = re.compile(
     r"hack|todo|fixme|bug|e\.g|i\.e)\b",
     re.IGNORECASE,
 )
+# Comments with numbers, shapes like (B, C, H, W) or ranges carry facts the next line hides.
+INFORMATIVE = re.compile(r"\d|\(.*,.*\)|\[.*\]|->|\bshape\b|\bunits?\b", re.IGNORECASE)
 SKIP_COMMENT_PREFIXES = (
     "#!",
     "# type:",
@@ -118,6 +120,8 @@ def is_restating(body: str, next_code: str) -> bool:
     """True if a comment only repeats what the following line of code says."""
     if not body or REASONING.search(body) or _is_commented_out_code(body):
         return False
+    if INFORMATIVE.search(body):
+        return False  # shapes, units and numbers say something the code does not
     if IMPERATIVE_COMMENT.match(body) and len(body.split()) <= 8:
         return True
     words = [w.lower() for w in re.findall(r"[A-Za-z]+", body) if len(w) >= 3]

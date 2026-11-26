@@ -22,11 +22,13 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 | Structure | `structure.oversized-file` | Files with 400+ (minor) or 700+ (major) lines of code |
 | | `structure.complex-function` | Cyclomatic complexity of 15 or more (radon) |
 | | `structure.duplicated-package` | The same package copied into several folders: same-named packages by file names, renamed copies (`data` / `data_old`) by content |
+| | `structure.copied-files` | The same file (or one with 85%+ identical code lines) in several places, e.g. one copy per experiment folder; copied packages are left to `structure.duplicated-package` |
 | | `structure.unused-module` | Modules no file, test or notebook imports and that run nothing themselves (scripts, `__init__.py`, example folders and installable libraries are left out) |
 | | `structure.import-cycle` | Modules that import each other at module level (lazy imports inside functions don't count) |
 | Reproducibility | `repro.hardcoded-path` | Absolute, machine-specific paths in string literals (test files are skipped) |
 | | `repro.missing-environment` | Third-party imports but no requirements/environment/pyproject file |
 | | `repro.unpinned-dependencies` | Requirements without exact versions |
+| | `repro.broken-local-import` | `import x.py`, and imports of project modules that only exist in other folders, so the script fails unless PYTHONPATH is set by hand (files in packages, tests and files that edit `sys.path` are left out) |
 | | `repro.missing-seed` | Random calls, shuffling splits or weight init with no seed anywhere |
 | Security | `security.env-file-not-ignored` | A `.env` file git would commit (asks `git check-ignore`; the file is never read) |
 | | `security.hardcoded-secret` | Known key formats and credential-named variables with key-like values (always redacted) |
@@ -34,7 +36,7 @@ shipshape eval corpus/fixtures --strict        # precision/recall against labell
 | | `readability.restating-comments` | Comments that narrate the next line instead of explaining why |
 | | `readability.missing-type-hints` | Most public functions unannotated |
 | | `readability.missing-docstrings` | Most public definitions of 8+ lines undocumented |
-| Testing | `testing.no-tests` | Two or more modules and no tests |
+| Testing | `testing.no-tests` | Two or more modules and no tests (a file named like a test only counts if it contains test functions, test classes or a pytest/unittest import) |
 | | `testing.untested-modules` | Most modules with 10+ lines of code never imported by a test |
 | (any) | `lint.*` | A curated set of 11 ruff rules (undefined names, mutable defaults, unused imports, ...) |
 

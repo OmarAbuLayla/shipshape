@@ -24,7 +24,9 @@ def test_notebook_location_is_translated_to_cell_and_line() -> None:
 
 
 def test_test_files_are_recognised(make_project: MakeProject) -> None:
-    project = make_project({"tests/helpers.py": "", "test_x.py": "", "pkg/model.py": ""})
+    project = make_project(
+        {"tests/helpers.py": "", "test_x.py": "def test_x():\n    pass\n", "pkg/model.py": ""}
+    )
 
     assert {s.path for s in project.sources if s.is_test} == {"tests/helpers.py", "test_x.py"}
 

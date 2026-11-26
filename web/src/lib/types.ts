@@ -204,6 +204,8 @@ export interface Report {
   exclusions?: Exclusions;
   /** Missing in reports saved before schema 0.6. */
   files?: Record<string, FileInfo>;
+  /** Files that could not be analysed. Missing in reports saved before schema 0.7. */
+  skipped?: { path: string; reason: string }[];
 }
 
 export interface FixOutcome {

@@ -2,16 +2,22 @@
 
 import pytest
 
+from shipshape.checks.copies import CopiedFiles, DuplicatedPackage
 from shipshape.checks.correctness import (
     ArrayNoneComparison,
     GroupedSplitLeakage,
     SwallowedException,
 )
 from shipshape.checks.readability import PrintDebugging, is_restating
-from shipshape.checks.reproducibility import MissingSeed, UnpinnedDependencies
+from shipshape.checks.reproducibility import (
+    BrokenLocalImport,
+    HardcodedPath,
+    MissingSeed,
+    UnpinnedDependencies,
+)
 from shipshape.checks.ruff import RuffCheck
 from shipshape.checks.security import EnvFileNotIgnored, HardcodedSecret, _gitignore_covers
-from shipshape.checks.structure import DuplicatedPackage, UnusedModule
+from shipshape.checks.structure import UnusedModule
 from shipshape.checks.testing import UntestedModules
 from shipshape.models import Dimension, Finding, Location, Severity
 from shipshape.scoring import dimension_scores, overall_grade
@@ -342,3 +348,94 @@ def test_installable_libraries_are_not_checked_for_unused_modules(
         "mylib/api.py": "def public():\n    return 1\n",
     }
     assert UnusedModule().run(make_project(files)) == []
+
+
+SCHEDULER = "".join(f"def step_{i}(lr):\n    return lr * {i}\n\n\n" for i in range(8))
+
+
+def test_copied_files_across_experiment_folders(make_project: MakeProject) -> None:
+    files = {
+        "exp_gru/lr_scheduler.py": SCHEDULER,
+        "exp_mamba/lr_scheduler.py": SCHEDULER,
+        "eval/lr_scheduler_2.py": SCHEDULER + "# tuned\n",
+        "exp_gru/train.py": "".join(f"def run_{i}():\n    return {i}\n\n\n" for i in range(8)),
+    }
+    (finding,) = CopiedFiles().run(make_project(files))
+    assert {loc.path for loc in finding.locations} == {
+        "exp_gru/lr_scheduler.py",
+        "exp_mamba/lr_scheduler.py",
+        "eval/lr_scheduler_2.py",
+    }
+
+
+def test_copied_packages_are_left_to_the_package_check(make_project: MakeProject) -> None:
+    other = SCHEDULER.replace("step_", "warmup_").replace("lr * ", "lr + ")
+    files = {"data/__init__.py": "", "data_old/__init__.py": ""}
+    for pkg in ("data", "data_old"):
+        files |= {f"{pkg}/a.py": SCHEDULER, f"{pkg}/b.py": other}
+    assert CopiedFiles().run(make_project(files)) == []
+
+
+def test_import_of_a_module_in_another_folder_is_broken(make_project: MakeProject) -> None:
+    files = {
+        "exp_a/main.py": "from helpers import f\nfrom model.py import *\n\nf()\n",
+        "exp_a/model.py": "X = 1\n",
+        "exp_b/helpers.py": "def f():\n    return 1\n",
+        "exp_b/main.py": "from helpers import f\n\nf()\n",
+        "shared.py": "Y = 2\n",
+        "exp_c/run.py": "import shared\nimport numpy\n",
+    }
+    (finding,) = BrokenLocalImport().run(make_project(files))
+    assert [(loc.path, loc.start_line) for loc in finding.locations] == [
+        ("exp_a/main.py", 1),
+        ("exp_a/main.py", 2),
+    ]
+
+
+def test_scripts_that_set_up_sys_path_are_trusted(make_project: MakeProject) -> None:
+    files = {
+        "exp_a/main.py": "import sys\nsys.path.append('../exp_b')\nfrom helpers import f\n",
+        "exp_b/helpers.py": "def f():\n    return 1\n",
+    }
+    assert BrokenLocalImport().run(make_project(files)) == []
+
+
+def test_files_with_a_byte_order_mark_are_parsed(make_project: MakeProject) -> None:
+    project = make_project({"bom.py": "\ufeffimport os\n\nX = os.sep\n"})
+    assert project.sources[0].tree is not None
+
+
+def test_experiments_named_like_tests_are_not_tests(make_project: MakeProject) -> None:
+    project = make_project(
+        {
+            "perturbation_test.py": "def run():\n    return 1\n",
+            "test_real.py": "def test_one():\n    assert True\n",
+            "tests/helpers.py": "X = 1\n",
+        }
+    )
+    tests = {s.path: s.is_test for s in project.sources}
+    assert tests == {
+        "perturbation_test.py": False,
+        "test_real.py": True,
+        "tests/helpers.py": True,
+    }
+
+
+def test_path_templates_are_not_hard_coded_paths(make_project: MakeProject) -> None:
+    code = (
+        'def wsl(drive, rest):\n    return f"/mnt/{drive}/{rest}"\n\n\nDATA = "/mnt/d/data/x.csv"\n'
+    )
+    (finding,) = HardcodedPath().run(make_project({"paths.py": code}))
+    assert [loc.start_line for loc in finding.locations] == [5]
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        "inputs shape: (B, 1, C, 36, 36)",
+        "MFSC input may arrive as (B, 1, 6, H, W)",
+        "trim the first 250 samples",
+    ],
+)
+def test_informative_comments_are_not_restating(comment: str) -> None:
+    assert not is_restating(comment, "inputs = inputs.reshape(inputs.shape[0], -1)")

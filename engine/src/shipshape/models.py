@@ -10,7 +10,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION = "0.6"
+SCHEMA_VERSION = "0.7"
 
 
 class Severity(StrEnum):
@@ -146,6 +146,13 @@ class Exclusions(BaseModel):
         return bool(self.files_excluded or self.disabled_checks or self.suppressed)
 
 
+class SkippedFile(BaseModel):
+    """A Python file or notebook Shipshape could not analyse, and why."""
+
+    path: str
+    reason: str
+
+
 class Report(BaseModel):
     """Result of scanning one project."""
 
@@ -159,6 +166,11 @@ class Report(BaseModel):
     grade: str = ""
     check_errors: list[str] = Field(
         default_factory=list, description="Checks that crashed; the rest of the report is valid."
+    )
+    skipped: list[SkippedFile] = Field(
+        default_factory=list,
+        description="Python files and notebooks that could not be analysed: their problems are "
+        "missing from the findings and the scores.",
     )
     graph: ProjectGraph | None = None
     explain_stats: ExplainStats | None = None

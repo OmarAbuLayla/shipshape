@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from shipshape.checks.base import Check
+from shipshape.checks.copies import CopiedFiles, DuplicatedPackage
 from shipshape.checks.correctness import (
     ArrayNoneComparison,
     GroupedSplitLeakage,
@@ -15,6 +16,7 @@ from shipshape.checks.readability import (
     RestatingComments,
 )
 from shipshape.checks.reproducibility import (
+    BrokenLocalImport,
     HardcodedPath,
     MissingEnvironment,
     MissingSeed,
@@ -24,7 +26,6 @@ from shipshape.checks.ruff import RULES, RuffCheck
 from shipshape.checks.security import EnvFileNotIgnored, HardcodedSecret
 from shipshape.checks.structure import (
     ComplexFunction,
-    DuplicatedPackage,
     ImportCycle,
     OversizedFile,
     UnusedModule,
@@ -45,9 +46,11 @@ def default_checks() -> list[Check]:
         DuplicatedPackage(),
         ImportCycle(),
         UnusedModule(),
+        CopiedFiles(),
         HardcodedPath(),
         MissingEnvironment(),
         UnpinnedDependencies(),
+        BrokenLocalImport(),
         MissingSeed(),
         EnvFileNotIgnored(),
         HardcodedSecret(),

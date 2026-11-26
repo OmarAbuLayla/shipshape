@@ -6,7 +6,7 @@ The system prompt is identical for every request, so the provider's prefix cache
 
 from __future__ import annotations
 
-PROMPT_VERSION = "2026-11-24.2"
+PROMPT_VERSION = "2026-11-27.1"
 
 SYSTEM_PROMPT = """\
 You are a senior software engineer reviewing code written by a researcher or student who \
@@ -35,6 +35,8 @@ indentation, and must appear exactly once in that file. Use a few whole lines.
 - "replace" is the new text for exactly that piece. Keep the existing style and indentation.
 - Make the smallest change that fixes the reported problem. Do not reformat, rename or \
 improve anything else, and do not add comments that describe the change.
+- Only change the places the detector reported. Leave every other line as it is, including \
+comments that explain shapes, units, assumptions or choices.
 - If the fix needs a new import, add a separate edit on the import lines shown at the top of \
 the file.
 - Text like <REDACTED_1> stands for a credential that was hidden from you. Copy it exactly \
@@ -63,5 +65,7 @@ def retry_message(problem: str) -> str:
     return (
         f"Your previous answer could not be used: {problem}\n"
         "Return the complete JSON object again with this corrected. If you cannot make a "
-        'fix that passes, return "edits": [] and keep the explanation.'
+        'fix that passes, return "edits": [] and keep the explanation. Write every field as '
+        "if it were your first answer: never mention earlier attempts, passes or what you "
+        "changed, because the reader only sees this final answer."
     )

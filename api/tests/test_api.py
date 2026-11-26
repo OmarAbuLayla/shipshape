@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from shipshape.llm.client import Completion, FatalLLMError, Message
+from shipshape.models import SCHEMA_VERSION
 
 from shipshape_api.app import create_app
 from shipshape_api.jobs import LLMConnection
@@ -310,7 +311,7 @@ def test_source_of_a_scanned_file(client: TestClient, tmp_path: Path) -> None:
         "changed": False,
     }
     report = client.get(f"/api/scans/{scan_id}/report").json()
-    assert report["schema_version"] == "0.6"
+    assert report["schema_version"] == SCHEMA_VERSION
     assert any(b["name"] == "module code" for b in report["files"]["train.py"]["blocks"])
     for outside in ("../secret.py", "notes.txt", str(tmp_path / "secret.py")):
         refused = client.get(f"/api/scans/{scan_id}/source", params={"path": outside})

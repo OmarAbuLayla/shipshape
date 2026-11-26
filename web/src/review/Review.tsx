@@ -164,6 +164,14 @@ export function Review({ report, scan }: { report: Report; scan: ScanSummary }) 
               {excluded.length > 0 && (
                 <span title={excluded.join("\n")}> · some files and lines left out on request</span>
               )}
+              {(report.skipped?.length ?? 0) > 0 && (
+                <span
+                  className="skipped-note"
+                  title={(report.skipped ?? []).map((f) => `${f.path}: ${f.reason}`).join("\n")}
+                >
+                  {" "}· {plural(report.skipped?.length ?? 0, "file")} could not be analysed
+                </span>
+              )}
             </div>
           </div>
         </div>

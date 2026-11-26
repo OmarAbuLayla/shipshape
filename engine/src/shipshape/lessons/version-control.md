@@ -30,7 +30,7 @@ Duplicated code doubles maintenance and hides which version produced which resul
 
 ## How Shipshape spots it
 
-It compares packages (folders with an `__init__.py`) that share a name and reports pairs whose file lists overlap by 60% or more, with at least three files between them. It compares file names, not contents, so a renamed copy is not caught.
+It compares packages (folders with an `__init__.py`): same-named ones by their file lists, renamed ones (`data` and `data_old`) by content, and reports pairs where 60% or more of the files match. Single files are compared too (`structure.copied-files`): files of 10+ lines whose code lines match 85% or more, such as one `lr_scheduler.py` per experiment folder or `train_2.py` next to `train.py`. Copies that were changed more than that are not caught.
 
 ## Read more
 

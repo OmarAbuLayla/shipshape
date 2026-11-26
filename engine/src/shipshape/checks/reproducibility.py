@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 import re
 import sys
+from collections import defaultdict
+from pathlib import PurePosixPath
 from typing import ClassVar
 
 from shipshape.astutil import (
@@ -16,6 +18,7 @@ from shipshape.astutil import (
     top_level_imports,
 )
 from shipshape.checks.base import Check, examples, plural
+from shipshape.imports import _raw_imports
 from shipshape.models import Dimension, Finding, Location, Severity
 from shipshape.project import Project
 
@@ -65,14 +68,24 @@ WEIGHTED_LAYER_PREFIXES = (
 )
 
 
+def _is_machine_path(value: str) -> bool:
+    """An absolute path with at least one concrete name after its root.
+
+    A bare root such as ``/mnt/`` or ``D:\\`` is left out: it is usually the fixed part of a
+    path built from variables (``f"/mnt/{drive}/{rest}"``), not a hard-coded location.
+    """
+    match = ABSOLUTE_PATH.match(value)
+    if match is None or len(value) > 260 or "\n" in value:
+        return False
+    return bool(re.search(r"\w", value[match.end() :]))
+
+
 def absolute_paths(tree: ast.AST) -> list[tuple[str, int]]:
     """(value, line) of every string literal that looks like a machine-specific absolute path."""
     return [
         (str(node.value), node.lineno)
         for node in string_constants(tree)
-        if len(str(node.value)) <= 260
-        and "\n" not in str(node.value)
-        and ABSOLUTE_PATH.match(str(node.value))
+        if _is_machine_path(str(node.value))
     ]
 
 
@@ -276,3 +289,79 @@ class MissingSeed(Check):
             f"over several seeds."
         )
         return [self.finding(message, [loc for _, loc in sites])]
+
+
+def _folder(path: PurePosixPath) -> str:
+    """A project folder as a POSIX string, ``""`` for the project root."""
+    return "" if str(path) == "." else path.as_posix()
+
+
+def _local_modules(project: Project) -> dict[str, list[str]]:
+    """Top-level module name -> folders (``""`` for the root) that hold it as a file or package."""
+    found: dict[str, list[str]] = defaultdict(list)
+    for rel in project.files:
+        path = PurePosixPath(rel)
+        if path.suffix == ".py" and path.name != "__init__.py":
+            found[path.stem].append(_folder(path.parent))
+        elif path.name == "__init__.py" and len(path.parts) >= 2:
+            found[path.parent.name].append(_folder(path.parent.parent))
+    return found
+
+
+def _reachable(folder: str, importer_dir: str) -> bool:
+    """Python finds a module next to the running script, and (with ``-m``) from folders above."""
+    return folder == "" or importer_dir == folder or importer_dir.startswith(folder + "/")
+
+
+class BrokenLocalImport(Check):
+    """Imports of project files that cannot work as the code is shipped."""
+
+    id: ClassVar[str] = "repro.broken-local-import"
+    title: ClassVar[str] = "Imports that only work on the author's setup"
+    severity: ClassVar[Severity] = Severity.MAJOR
+    dimension: ClassVar[Dimension] = Dimension.REPRODUCIBILITY
+    concept: ClassVar[str] = "Explicit imports"
+
+    def run(self, project: Project) -> list[Finding]:
+        """Flag ``import x.py`` and imports of modules that exist only in other folders.
+
+        Files inside packages, tests and files that change ``sys.path`` themselves are left
+        out: there the search path is set up on purpose.
+        """
+        modules = _local_modules(project)
+        locations: list[Location] = []
+        examples_found: list[str] = []
+        for source in project.parsed:
+            assert source.tree is not None
+            importer_dir = _folder(PurePosixPath(source.path).parent)
+            in_package = f"{importer_dir}/__init__.py" in project.files if importer_dir else False
+            if source.is_test or in_package or "sys.path" in source.text:
+                continue
+            for raw in _raw_imports(source.tree):
+                if raw.level or not raw.module:
+                    continue
+                parts = raw.module.split(".")
+                top = parts[0]
+                if top in sys.stdlib_module_names or top not in modules:
+                    continue
+                if parts[-1] == "py" and len(parts) == 2:
+                    problem = f"`{raw.module}`: drop the `.py`, it is `import {top}`"
+                elif not any(_reachable(folder, importer_dir) for folder in modules[top]):
+                    where = ", ".join(f"`{f or '.'}`" for f in sorted(modules[top])[:3])
+                    problem = f"`{top}` only exists in {where}"
+                else:
+                    continue
+                locations.append(source.location(raw.line))
+                examples_found.append(f"{source.path}: {problem}")
+        if not locations:
+            return []
+        message = (
+            f"{plural(len(locations), 'import')} cannot work as the code is shipped: "
+            f"{examples_found[0]}"
+            + (f" (and {len(locations) - 1} more)" if len(locations) > 1 else "")
+            + ". When the script runs, Python looks for modules next to it, not in other "
+            "folders, so this only works with a hand-set PYTHONPATH or a file copied in by hand. "
+            "Put shared code into one importable package, or import the file that is actually "
+            "next to the script."
+        )
+        return [self.finding(message, locations, evidence="; ".join(examples_found[:4]))]

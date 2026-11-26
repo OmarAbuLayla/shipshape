@@ -27,7 +27,7 @@ Readable code answers "where does this come from?" without searching. Star impor
 
 ## How Shipshape spots it
 
-Through ruff's rule F403: any `from ... import *` statement.
+Through ruff's rule F403: any `from ... import *` statement. It also reports imports that cannot work as the code is shipped (`repro.broken-local-import`): `import model.py` instead of `import model`, and imports of a project file that only exists in another folder, which work only while that folder happens to be on the Python path.
 
 ## Read more
 
